@@ -131,3 +131,38 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 700; background: var(-
 .atu-notas { margin: 0 0 10px; padding-left: 20px; line-height: 1.6; }
 .painel-cx .modal-rod .btn-sec { white-space: nowrap; }
 #pnOnde { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- marcas de alerta na miniatura (lado incerto / repetida) ---------- */
+.pag-marcas span.m-alerta { background: var(--amarelo); color: #fff; font-weight: 800; font-size: 11px; padding: 0 4px; }
+
+/* ---------- aviso flutuante ---------- */
+.toast { position: fixed; right: 16px; bottom: 44px; z-index: 70; max-width: 460px; background: var(--surface); color: var(--texto); border: 1px solid var(--borda); border-left: 5px solid var(--amarelo); border-radius: 10px; padding: 12px 34px 12px 14px; font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgba(0,0,0,.18); transform: translateY(20px); opacity: 0; pointer-events: none; transition: .2s; cursor: pointer; }
+.toast.on { transform: none; opacity: 1; pointer-events: auto; }
+.toast.ok { border-left-color: var(--verde); }
+.toast-x { position: absolute; top: 8px; right: 10px; color: var(--texto-fraco); font-size: 12px; }
+
+/* ---------- menu "Mais" ---------- */
+.menu-mais { position: fixed; z-index: 65; background: var(--surface); border: 1px solid var(--borda); border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.2); padding: 6px; width: 380px; display: flex; flex-direction: column; gap: 2px; }
+.menu-item { display: flex; align-items: flex-start; gap: 10px; text-align: left; border: 0; background: transparent; color: var(--texto); padding: 8px 10px; border-radius: 8px; }
+.menu-item:hover:not(:disabled) { background: var(--surface-2); }
+.menu-item:disabled { opacity: .45; cursor: default; }
+.menu-item .mi-ic { font-size: 18px; width: 24px; text-align: center; color: var(--acento); }
+.menu-item b { display: block; font-size: 13px; }
+.menu-item small { display: block; font-size: 11.5px; color: var(--texto-fraco); line-height: 1.35; }
+
+/* ---------- fila de associados ---------- */
+.fila-prox { border: 1px solid var(--acento); background: color-mix(in srgb, var(--acento) 8%, var(--surface)); color: var(--texto); padding: 7px 12px; border-radius: 8px; font-size: 13px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fila-prox:hover { background: color-mix(in srgb, var(--acento) 16%, var(--surface)); }
+.fila-lista { max-height: 380px; overflow-y: auto; border: 1px solid var(--borda); border-radius: 8px; }
+.fila-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--borda); font-size: 13px; }
+.fila-item:first-child { border-top: 0; }
+.fila-item.feito .fila-nome { text-decoration: line-through; color: var(--texto-fraco); }
+.fila-n { width: 30px; color: var(--texto-fraco); font-size: 11px; text-align: right; }
+.fila-nome { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fila-tag { font-size: 11px; font-weight: 600; color: var(--texto-fraco); }
+
+/* ---------- documentos obrigatorios ---------- */
+.obrig { font-size: 13px; padding: 7px 10px; border-radius: 8px; margin-bottom: 4px; }
+.obrig.falta { background: color-mix(in srgb, var(--amarelo) 13%, transparent); color: var(--texto); border: 1px solid color-mix(in srgb, var(--amarelo) 40%, transparent); }
+.obrig.ok { background: color-mix(in srgb, var(--verde) 12%, transparent); color: var(--verde); font-weight: 700; }
+.obrig.dica-obrig { color: var(--texto-fraco); font-size: 12px; background: var(--surface-2); }

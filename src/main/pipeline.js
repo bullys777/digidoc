@@ -34,22 +34,6 @@ function ehBranca(raw) {
   return escuros / data.length < 0.004;
 }
 
-// ---------- orientacao 90/180/270 por projecao ----------
-// Heuristica sem OCR: texto gera muitas "linhas" horizontais. Mede a variacao
-// das somas por linha (horizontal) vs por coluna (vertical). Decide retrato vs paisagem.
-// Para 180 (de cabeca pra baixo) a heuristica de projecao e fraca; o auto-giro
-// forte (conteudo) fica a cargo do OCR opcional (orientacao.js), se habilitado.
-function variacaoProjecao(data, w, h) {
-  const linhas = new Float64Array(h);
-  for (let y = 0; y < h; y++) {
-    let s = 0;
-    for (let x = 0; x < w; x++) s += 255 - data[y * w + x];
-    linhas[y] = s;
-  }
-  let v = 0;
-  for (let y = 1; y < h; y++) { const d = linhas[y] - linhas[y - 1]; v += d * d; }
-  return v;
-}
 
 // ---------- deskew (inclinacao pequena, +-6 graus) ----------
 // Pontua o alinhamento das linhas de texto: quanto mais "picos" nitidos na
@@ -77,10 +61,15 @@ async function detectarInclinacao(buf) {
     .raw().toBuffer({ resolveWithObject: true });
   const w0 = base.info.width, h0 = base.info.height;
   const data = base.data;
-  // binariza o texto; ignora pixels muito escuros (fundo/cantos de foto, nao texto)
-  const T = (percentil(data, 6) + percentil(data, 55)) / 2;
+  // binariza o texto; ignora pixels muito escuros (fundo/cantos de foto, nao texto).
+  // Em pagina quase toda branca o meio-termo dos percentis fica ~255 e pegava ate o cinza claro de
+  // um cartao (RG) como "texto": o limite nunca passa de (cor do papel - 50).
+  const papel = percentil(data, 90);
+  const T = Math.min((percentil(data, 6) + percentil(data, 55)) / 2, papel - 50);
   const bin = Buffer.allocUnsafe(data.length);
-  for (let i = 0; i < data.length; i++) bin[i] = (data[i] < T && data[i] > 30) ? 0 : 255;
+  let tinta = 0;
+  for (let i = 0; i < data.length; i++) { const t = data[i] < T && data[i] > 30; bin[i] = t ? 0 : 255; if (t) tinta++; }
+  if (tinta < data.length * 0.002) return 0; // quase nada escrito: nao tem o que endireitar
 
   async function scoreEm(ang) {
     if (ang === 0) return pontuaProjecao(bin, w0, h0);
@@ -90,17 +79,23 @@ async function detectarInclinacao(buf) {
     return pontuaProjecao(r.data, r.info.width, r.info.height);
   }
 
-  let melhor = 0, melhorV = await scoreEm(0);
+  const v0 = await scoreEm(0);
+  let melhor = 0, melhorV = v0;
   for (let a = -6; a <= 6.0001; a += 0.5) {
     if (a === 0) continue;
     const v = await scoreEm(a);
     if (v > melhorV) { melhorV = v; melhor = a; }
   }
-  for (let a = melhor - 0.4; a <= melhor + 0.4001; a += 0.1) {
+  // ajuste fino em volta do melhor. (Bug antigo: o limite do laco usava "melhor", que muda dentro
+  // do laco — numa pagina com moldura ele ia "andando" ate 20 graus.)
+  const centro = melhor;
+  for (let a = centro - 0.4; a <= centro + 0.4001; a += 0.1) {
     const v = await scoreEm(a);
     if (v > melhorV) { melhorV = v; melhor = a; }
   }
-  return Math.abs(melhor) < 0.2 ? 0 : Math.round(melhor * 10) / 10;
+  // sem pico claro: o melhor caiu na borda da busca ou e so um pouquinho melhor que 0 -> nao mexe
+  if (Math.abs(melhor) >= 5.6 || melhorV < v0 * 1.03) return 0;
+  return Math.abs(melhor) < 0.3 ? 0 : Math.round(melhor * 10) / 10; // menos de 0,3 grau: nem mexe
 }
 
 // ---------- recorte do documento numa foto ----------
@@ -136,8 +131,19 @@ async function processarPagina(entrada, opcoes = {}) {
   let img = sharp(entrada, { failOn: "none" }).rotate(); // .rotate() sem arg aplica EXIF (foto do iPhone)
   let buf = await img.toBuffer();
 
+  // pagina montada pelo proprio app (ex.: "juntar paginas"): ja esta tratada. So gira, cor e recorte.
+  if (opcoes.semAjustes) {
+    const g = typeof opcoes.giroFixo === "number" ? ((opcoes.giroFixo % 360) + 360) % 360 : 0;
+    let p = sharp(buf);
+    if (g) p = p.rotate(g);
+    if (!opcoes.colorido) p = p.grayscale();
+    let saida = await p.toBuffer();
+    if (opcoes.recorte) { try { saida = await aplicarRecorte(saida, opcoes.recorte); } catch {} }
+    const m = await sharp(saida).metadata();
+    return { buffer: saida, width: m.width, height: m.height, giro: g };
+  }
+
   const { peq } = await estatisticas(buf);
-  const pw = peq.info.width, ph = peq.info.height;
 
   // branca?
   if (aj.tirarPaginaBranca && ehBranca(peq)) {
@@ -148,17 +154,15 @@ async function processarPagina(entrada, opcoes = {}) {
   // usuario no botao Girar) — nao roda o automatico de novo (e lento e poderia discordar)
   const temFixo = typeof opcoes.giroFixo === "number";
   let giro = temFixo ? ((opcoes.giroFixo % 360) + 360) % 360 : 0;
-  if (!temFixo && aj.autoGirar) {
-    if (opcoes.orientador) {
-      try { giro = (await opcoes.orientador(buf)) || 0; } catch { giro = 0; }
-    }
-    if (!giro) {
-      // heuristica: se esta "deitado" (mais largo que alto) assume 90
-      const varH = variacaoProjecao(peq.data, pw, ph);
-      const varV = variacaoProjecao(
-        rotacionaRaw90(peq.data, pw, ph).data, ph, pw);
-      if (pw > ph * 1.15 && varV > varH) giro = 90;
-    }
+  let giroIncerto = false;
+  if (!temFixo && aj.autoGirar && opcoes.orientador) {
+    // modelo de orientacao + Tesseract (orientacao.js). Sem certeza = nao gira (e avisa pra conferir).
+    // (antes havia um "chute": pagina deitada sempre girava 90 pro mesmo lado — errava metade)
+    try {
+      const d = await opcoes.orientador(buf);
+      if (d && typeof d === "object") { giro = d.giro || 0; giroIncerto = d.fonte === "incerto"; }
+      else giro = d || 0;
+    } catch { giro = 0; }
   }
   if (giro) buf = await sharp(buf).rotate(giro).toBuffer();
 
@@ -215,7 +219,46 @@ async function processarPagina(entrada, opcoes = {}) {
   }
 
   const meta = await sharp(saida).metadata();
-  return { buffer: saida, width: meta.width, height: meta.height, giro };
+  return { buffer: saida, width: meta.width, height: meta.height, giro, giroIncerto };
+}
+
+// "impressao digital" da pagina pra achar pagina repetida: 120x168 em cinza, contraste esticado e
+// levemente borrada (tira o serrilhado das letras). A tela compara procurando o melhor encaixe.
+const DIGITAL_W = 120, DIGITAL_H = 168;
+async function digital(buf) {
+  const { data } = await sharp(buf, { failOn: "none" }).grayscale().normalise().blur(2.5)
+    .resize(DIGITAL_W, DIGITAL_H, { fit: "fill" }).raw().toBuffer({ resolveWithObject: true });
+  return Buffer.from(data).toString("base64");
+}
+
+// junta varias paginas numa so (ex.: RG frente e verso numa folha). Corta as margens brancas de cada
+// uma, empilha e, se couber, poe numa folha A4 (no dpi do scanner) — fica do tamanho real.
+async function juntarPaginas(bufs, { dpi = 200, colorido = false } = {}) {
+  const pedacos = [];
+  for (const b of bufs) {
+    let p = sharp(b, { failOn: "none" }).flatten({ background: "#ffffff" });
+    try { p = sharp(await p.trim({ background: "#ffffff", threshold: 40 }).toBuffer()); } catch { p = sharp(b, { failOn: "none" }); }
+    const buf = await p.toBuffer();
+    const m = await sharp(buf).metadata();
+    pedacos.push({ buf, w: m.width, h: m.height });
+  }
+  const a4w = Math.round(8.27 * dpi), a4h = Math.round(11.69 * dpi), margem = Math.round(0.4 * dpi), vao = Math.round(0.25 * dpi);
+  // largura comum: a maior, mas nunca mais larga que a folha A4 (menos as margens)
+  const larg = Math.min(Math.max(...pedacos.map((p) => p.w)), a4w - 2 * margem);
+  const prontos = [];
+  for (const p of pedacos) {
+    const esc = p.w > larg ? larg / p.w : 1;
+    const w = Math.round(p.w * esc), h = Math.round(p.h * esc);
+    prontos.push({ input: esc < 1 ? await sharp(p.buf).resize(w, h).toBuffer() : p.buf, w, h });
+  }
+  const altura = prontos.reduce((s, p) => s + p.h, 0) + vao * (prontos.length - 1);
+  const cabeA4 = altura <= a4h - 2 * margem;
+  const W = cabeA4 ? a4w : larg + 2 * margem, H = cabeA4 ? a4h : altura + 2 * margem;
+  let y = margem;
+  const camadas = prontos.map((p) => { const c = { input: p.input, left: Math.round((W - p.w) / 2), top: y }; y += p.h + vao; return c; });
+  let out = sharp({ create: { width: W, height: H, channels: 3, background: "#ffffff" } }).composite(camadas);
+  if (!colorido) out = out.grayscale();
+  return out.jpeg({ quality: 92 }).toBuffer();
 }
 
 // corta um retangulo normalizado { x, y, w, h } (0..1) da imagem
@@ -244,15 +287,6 @@ async function temCor(buf) {
   } catch { return true; }
 }
 
-// rotaciona raw cinza 90 graus (horario) — pra heuristica de orientacao
-function rotacionaRaw90(data, w, h) {
-  const out = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++)
-      out[x * h + (h - 1 - y)] = data[y * w + x];
-  return { data: out, w: h, h: w };
-}
-
 // gera uma miniatura JPEG (data URL) pra tela
 async function miniatura(entrada, tamanho = 150, opcoes = {}) {
   try {
@@ -266,4 +300,4 @@ async function miniatura(entrada, tamanho = 150, opcoes = {}) {
   }
 }
 
-module.exports = { processarPagina, miniatura, detectarInclinacao, recortarDocumento, aplicarRecorte, temCor };
+module.exports = { processarPagina, miniatura, detectarInclinacao, recortarDocumento, aplicarRecorte, temCor, digital, juntarPaginas };

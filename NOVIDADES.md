@@ -3,6 +3,16 @@
 Cada versão nova começa com `## <versão>`. As linhas com `-` viram a lista de
 novidades que aparece no aviso de atualização dentro do app.
 
+## 0.4.0
+- Giro automático novo: usa um modelo de inteligência artificial feito só pra orientação de documento (PaddleOCR). Nos testes acertou 24 de 24, inclusive RG pequeno no vidro, que o sistema antigo errava
+- Quando não tem certeza do lado (ex.: foto sem texto), o DigiDoc não gira e marca a página com ↻? pra você conferir
+- Corrigido o "endireitar": em página com cartão (RG) ele podia entortar até 20 graus
+- Aviso de página repetida (≈): quando a mesma folha entra duas vezes
+- Menu ⋯ Mais: intercalar frente e verso (scanner sem duplex), inverter a ordem e juntar páginas numa folha (RG frente e verso numa A4)
+- Fila de associados (📋 Fila): cole a lista de nomes; depois de salvar, o próximo nome já entra sozinho
+- Documentos obrigatórios: marque em Configurações > Tipos (coluna Obrig.) e o DigiDoc mostra o que falta de cada associado
+- Corrigido: apagar um tipo na tabela de tipos fazia os de baixo perderem a opção "Cor?"
+
 ## 0.3.1
 - Cor do próprio scanner: as páginas coloridas agora saem com as cores exatamente como o scanner mandou (antes ficavam estouradas)
 - Nova opção em Configurações > Ajustes da imagem: "Manter a cor do scanner" (ligada por padrão)

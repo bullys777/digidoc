@@ -1,7 +1,7 @@
 {
   "name": "digitalizador",
   "productName": "DigiDoc",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "DigiDoc - digitalizador de documentos em lote",
   "main": "src/main/main.js",
   "scripts": {
@@ -21,6 +21,7 @@
     "png-to-ico": "^3.0.0"
   },
   "dependencies": {
+    "onnxruntime-node": "1.31.1",
     "pdf-lib": "1.17.1",
     "qrcode": "^1.5.4",
     "sharp": "0.33.5",
@@ -29,17 +30,27 @@
   "build": {
     "appId": "com.local.digidoc",
     "productName": "DigiDoc",
-    "electronLanguages": ["pt-BR", "en-US"],
+    "electronLanguages": [
+      "pt-BR",
+      "en-US"
+    ],
     "files": [
       "src/**/*",
       "assets/**/*",
       "!**/node_modules/tesseract.js-core/*-lstm.wasm",
       "!**/node_modules/tesseract.js-core/*-lstm.wasm.js",
+      "!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**",
+      "!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
+      "!**/node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**",
+      "!**/node_modules/onnxruntime-node/bin/napi-v*/win32/x64/DirectML.dll",
+      "!**/node_modules/onnxruntime-node/bin/napi-v*/win32/x64/dxcompiler.dll",
+      "!**/node_modules/onnxruntime-node/script/**",
       "!**/*.map"
     ],
     "asarUnpack": [
       "**/node_modules/sharp/**",
       "**/node_modules/@img/**",
+      "**/node_modules/onnxruntime-node/**",
       "**/node_modules/tesseract.js/**",
       "**/node_modules/tesseract.js-core/**",
       "assets/tesseract/**"

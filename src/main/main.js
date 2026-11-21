@@ -28,7 +28,12 @@ const QRCode = sobDemanda("qrcode", () => require("qrcode"));
 const orientacao = sobDemanda("orientacao", () => {
   const o = require("./orientacao");
   const unpacked = app.isPackaged ? path.join(process.resourcesPath, "app.asar.unpacked") : path.join(__dirname, "..", "..");
-  o.configurar({ core: path.join(unpacked, "node_modules", "tesseract.js-core"), lang: path.join(unpacked, "assets", "tesseract") });
+  o.configurar({
+    core: path.join(unpacked, "node_modules", "tesseract.js-core"),
+    lang: path.join(unpacked, "assets", "tesseract"),
+    // modelo de orientacao: lido pelo fs do Electron (funciona dentro do app.asar)
+    modelo: path.join(__dirname, "..", "..", "assets", "modelos", "orientacao-documento.onnx"),
+  });
   return o;
 });
 
@@ -92,13 +97,16 @@ function opcoesPipeline(extra = {}) {
     recorte: extra.recorte || null,
     ehFoto: extra.ehFoto || false,
     // o pipeline so chama o orientador quando ajustes.autoGirar estiver ligado
-    orientador: (buf) => orientacao.detectarGiro(buf),
+    orientador: (buf) => orientacao.detectarDetalhado(buf),
+    semAjustes: !!extra.semAjustes,
   };
 }
 
 const resumoPagina = (id, p, thumb) => ({
   id, thumb, giro: p.meta.giro, w: p.meta.w, h: p.meta.h, colorido: !!p.opts.colorido, recortada: !!p.opts.recorte,
+  incerto: !!p.meta.incerto, digital: p.meta.digital || "",
 });
+async function digitalSegura(buf) { try { return await pipeline.digital(buf); } catch { return ""; } }
 
 async function registrarPagina(original, { colorido, ehFoto } = {}) {
   const id = "p" + ++seq;
@@ -108,7 +116,8 @@ async function registrarPagina(original, { colorido, ehFoto } = {}) {
     return { branca: true };
   }
   opts.giroFixo = r.giro || 0; // daqui pra frente o giro e fixo (Girar soma em cima)
-  const p = { original, opts, processado: r.buffer, meta: { w: r.width, h: r.height, giro: r.giro } };
+  const p = { original, opts, processado: r.buffer,
+    meta: { w: r.width, h: r.height, giro: r.giro, incerto: !!r.giroIncerto, digital: await digitalSegura(r.buffer) } };
   paginas.set(id, p);
   const thumb = await pipeline.miniatura(r.buffer, cfg.tamanhoMiniatura);
   return resumoPagina(id, p, thumb);
@@ -120,7 +129,7 @@ async function reprocessar(id) {
   const r = await pipeline.processarPagina(p.original, opcoesPipeline(p.opts));
   if (r.branca) return resumoPagina(id, p, await pipeline.miniatura(p.processado, cfg.tamanhoMiniatura));
   p.processado = r.buffer;
-  p.meta = { w: r.width, h: r.height, giro: r.giro };
+  p.meta = Object.assign(p.meta || {}, { w: r.width, h: r.height, giro: r.giro, digital: await digitalSegura(r.buffer) });
   const thumb = await pipeline.miniatura(r.buffer, cfg.tamanhoMiniatura);
   return resumoPagina(id, p, thumb);
 }
@@ -312,7 +321,32 @@ ipcMain.handle("pagina:girar", async (_e, { id, graus }) => {
   const g = ((graus % 360) + 360) % 360;
   p.opts.giroFixo = (((p.opts.giroFixo || 0) + g) % 360 + 360) % 360;
   p.opts.recorte = girarRetangulo(p.opts.recorte, g);
+  p.meta.incerto = false; // a pessoa ja conferiu o lado
   return reprocessar(id);
+});
+
+// "ja conferi, esta certo": tira o aviso de lado incerto sem girar
+ipcMain.handle("pagina:confirmarLado", (_e, ids) => {
+  for (const id of ids || []) { const p = paginas.get(id); if (p) p.meta.incerto = false; }
+  return true;
+});
+
+// junta varias paginas numa so (RG frente e verso numa folha A4). A nova pagina entra no lugar;
+// as originais vao pra lixeira (o Desfazer traz de volta)
+ipcMain.handle("paginas:juntar", async (_e, { ids } = {}) => {
+  try {
+    const ps = (ids || []).map((id) => paginas.get(id)).filter(Boolean);
+    if (ps.length < 2) return { erro: "Marque pelo menos 2 páginas." };
+    const colorido = ps.some((p) => p.opts.colorido);
+    const original = await pipeline.juntarPaginas(ps.map((p) => p.processado), { dpi: cfg.scanner.resolucao || 200, colorido });
+    const id = "p" + ++seq;
+    const opts = { colorido, ehFoto: false, giroFixo: 0, recorte: null, semAjustes: true };
+    const r = await pipeline.processarPagina(original, opcoesPipeline(opts));
+    const p = { original, opts, processado: r.buffer, meta: { w: r.width, h: r.height, giro: 0, incerto: false, digital: await digitalSegura(r.buffer) } };
+    paginas.set(id, p);
+    for (const old of ids) { const q = paginas.get(old); if (q) { lixeira.set(old, q); paginas.delete(old); } }
+    return resumoPagina(id, p, await pipeline.miniatura(r.buffer, cfg.tamanhoMiniatura));
+  } catch (e) { return { erro: e.message }; }
 });
 
 // recorte manual. rect normalizado sobre a imagem que a tela mostra AGORA (ja recortada, se tiver);
@@ -677,6 +711,36 @@ ipcMain.handle("associado:abrirDoc", (_e, { nome, arquivo } = {}) => {
 });
 
 ipcMain.handle("app:versao", () => app.getVersion());
+
+// ---- fila de associados (lista de nomes pra ir fazendo um por um) — deste PC ----
+const FILA = path.join(app.getPath("userData"), "fila.json");
+ipcMain.handle("fila:obter", () => {
+  try { const f = JSON.parse(fs.readFileSync(FILA, "utf8")); return { itens: Array.isArray(f.itens) ? f.itens : [], auto: f.auto !== false }; }
+  catch { return { itens: [], auto: true }; }
+});
+ipcMain.handle("fila:salvar", (_e, f) => {
+  try {
+    fs.mkdirSync(path.dirname(FILA), { recursive: true });
+    const itens = (f && Array.isArray(f.itens) ? f.itens : []).slice(0, 5000)
+      .map((i) => ({ nome: String(i.nome || "").trim().slice(0, 120), feito: !!i.feito })).filter((i) => i.nome);
+    fs.writeFileSync(FILA, JSON.stringify({ itens, auto: !(f && f.auto === false) }), "utf8");
+    return true;
+  } catch { return false; }
+});
+// le nomes de um .txt/.csv (1a coluna; separador ; , ou tab). Ignora linha de cabecalho "nome".
+ipcMain.handle("fila:importar", async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: "Lista de associados (um nome por linha)", properties: ["openFile"],
+    filters: [{ name: "Texto ou planilha CSV", extensions: ["txt", "csv"] }],
+  });
+  if (r.canceled || !r.filePaths[0]) return null;
+  let txt = fs.readFileSync(r.filePaths[0]);
+  // Excel salva CSV em ANSI (latin1) no Windows; se nao for UTF-8 valido, le como latin1
+  let s = txt.toString("utf8");
+  if (s.includes("�")) s = txt.toString("latin1");
+  return s.replace(/^﻿/, "").split(/\r?\n/).map((l) => l.split(/[;\t,]/)[0].replace(/^"|"$/g, "").trim())
+    .filter((n, i) => n && !(i === 0 && /^nome/i.test(n)));
+});
 
 // copia o PDF salvo pra pasta de backup, espelhando Letra\Nome\arquivo.pdf
 function fazerBackup(caminho) {

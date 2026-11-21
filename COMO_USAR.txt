@@ -68,6 +68,29 @@ ARRUMAR AS PAGINAS
 - 🎨 Cor (tecla C): deixa a pagina colorida ou em cinza. O tipo
   "Foto 3x4" ja sai colorido sozinho.
 - Errou? Ctrl+Z desfaz (remover, girar, ordem, tipo, recorte, cor).
+- Giro automatico: o DigiDoc acha o lado certo sozinho. Quando nao
+  tem certeza (ex.: foto sem texto) ele NAO gira e marca a pagina com
+  ↻? -- confira so essas (R gira). ≈ = pagina que parece repetida.
+- Botao ⋯ Mais:
+  * Intercalar frente e verso: scanner que nao faz frente e verso?
+    Escaneie todas as frentes, vire o maco, escaneie os versos e
+    clique aqui: cada verso vai pra depois da sua frente.
+  * Inverter a ordem.
+  * Juntar as marcadas numa folha (ex.: RG frente e verso numa A4).
+
+
+FILA DE ASSOCIADOS (botao 📋 Fila)
+----------------------------------
+- Cole a lista de nomes (ou importe um .txt/.csv do Excel).
+- Depois de salvar, o DigiDoc marca o nome como feito e ja poe o
+  proximo no campo. O botao "Proximo: ..." mostra quem vem.
+
+
+DOCUMENTOS OBRIGATORIOS
+-----------------------
+- Configuracoes > Tipos de documento > coluna "Obrig.".
+- No modo DOCUMENTO POR DOCUMENTO aparece "Ainda falta: ..." pra
+  cada associado, e um aviso depois de salvar se faltou algum.
 
 
 CONTAGEM / PAINEL (F3 ou clique em "Hoje" embaixo)

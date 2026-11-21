@@ -31,6 +31,13 @@ const api = {
   restaurarPaginas: (ids) => ipcRenderer.invoke("paginas:restaurar", ids),
   purgarLixeira: (ids) => ipcRenderer.invoke("lixeira:purgar", ids),
   limparPaginas: () => ipcRenderer.invoke("paginas:limpar"),
+  confirmarLado: (ids) => ipcRenderer.invoke("pagina:confirmarLado", ids),
+  juntarPaginas: (ids) => ipcRenderer.invoke("paginas:juntar", { ids }),
+
+  // fila de associados
+  filaObter: () => ipcRenderer.invoke("fila:obter"),
+  filaSalvar: (f) => ipcRenderer.invoke("fila:salvar", f),
+  filaImportar: () => ipcRenderer.invoke("fila:importar"),
   previa: (id, tamanho) => ipcRenderer.invoke("pagina:previa", { id, tamanho }),
 
   // historico de salvamentos (deste PC)

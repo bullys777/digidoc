@@ -12,14 +12,77 @@ let appVersao = "";
 
 // pagina da tela a partir do que o main devolve
 function novaPagina(r) {
-  return { id: r.id, thumb: r.thumb, giro: r.giro, w: r.w, h: r.h, tipo: null, colorido: !!r.colorido, recortada: !!r.recortada };
+  return { id: r.id, thumb: r.thumb, giro: r.giro, w: r.w, h: r.h, tipo: null, colorido: !!r.colorido, recortada: !!r.recortada,
+    incerto: !!r.incerto, digital: r.digital || "", repetidaDe: null };
 }
 // atualiza a pagina da tela com o resultado de girar/recortar/cor
 function atualizarPagina(r) {
   const p = r && paginas.find((x) => x.id === r.id);
   if (!p) return null;
-  Object.assign(p, { thumb: r.thumb, giro: r.giro, w: r.w, h: r.h, colorido: !!r.colorido, recortada: !!r.recortada });
+  Object.assign(p, { thumb: r.thumb, giro: r.giro, w: r.w, h: r.h, colorido: !!r.colorido, recortada: !!r.recortada,
+    incerto: !!r.incerto, digital: r.digital || p.digital });
   return p;
+}
+
+// ---------------- aviso flutuante (some sozinho) ----------------
+let _toastTimer = null;
+function toast(html, tipo = "aviso", ms = 9000) {
+  let el = document.getElementById("toast");
+  if (!el) { el = document.createElement("div"); el.id = "toast"; document.body.appendChild(el); el.onclick = () => el.classList.remove("on"); }
+  el.className = "toast " + tipo;
+  el.innerHTML = html + '<span class="toast-x">✕</span>';
+  requestAnimationFrame(() => el.classList.add("on"));
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove("on"), ms);
+}
+
+// ---------------- pagina repetida (alimentador puxou de novo / escaneou 2x) ----------------
+const DIG_W = 120, DIG_H = 168; // mesmo tamanho do pipeline.digital
+const _cacheDigital = new Map();
+function _bytesDigital(d) {
+  if (_cacheDigital.has(d)) return _cacheDigital.get(d);
+  let b = null;
+  try { b = Uint8Array.from(atob(d), (c) => c.charCodeAt(0)); } catch {}
+  if (_cacheDigital.size > 400) _cacheDigital.clear();
+  _cacheDigital.set(d, b);
+  return b;
+}
+// diferenca media entre duas "impressoes digitais" (0 = identicas). alinhar=true procura o melhor
+// encaixe (+-5 px na miniatura) — pega a mesma folha escaneada de novo um pouco deslocada
+function diferencaDigital(a, b, alinhar = false) {
+  const x = _bytesDigital(a), y = _bytesDigital(b);
+  if (!x || !y || x.length !== y.length || x.length !== DIG_W * DIG_H) return 255;
+  const M = alinhar ? 5 : 0;
+  let melhor = 255;
+  for (let dy = -M; dy <= M; dy++) for (let dx = -M; dx <= M; dx++) {
+    let s = 0, n = 0;
+    for (let yy = 5; yy < DIG_H - 5; yy++) {
+      const la = yy * DIG_W, lb = (yy + dy) * DIG_W + dx;
+      for (let xx = 5; xx < DIG_W - 5; xx++) { s += Math.abs(x[la + xx] - y[lb + xx]); n++; }
+    }
+    if (s / n < melhor) melhor = s / n;
+  }
+  return melhor;
+}
+// confere as paginas novas: a mesma folha logo em seguida (com encaixe, < 4.5) ou identica a
+// qualquer outra (sem encaixe, < 2). Limites escolhidos pra nao acusar 2 contas do mesmo modelo.
+function conferirNovasPaginas(novas) {
+  const avisos = [];
+  for (const p of novas) {
+    const i = paginas.indexOf(p);
+    if (i < 0 || !p.digital) continue;
+    for (let j = i - 1; j >= 0; j--) { // so com as que vieram antes (nao avisa o mesmo par 2 vezes)
+      if (!paginas[j].digital) continue;
+      const repetida = j === i - 1 ? diferencaDigital(p.digital, paginas[j].digital, true) < 4.5
+        : diferencaDigital(p.digital, paginas[j].digital) < 2;
+      if (repetida) { p.repetidaDe = paginas[j].id; avisos.push(`a página ${i + 1} parece igual à ${j + 1}`); break; }
+    }
+  }
+  const incertas = novas.filter((p) => p.incerto).map((p) => paginas.indexOf(p) + 1).filter((n) => n > 0);
+  const partes = [];
+  if (avisos.length) partes.push(`<b>≈ Página repetida?</b> ${avisos.slice(0, 3).join("; ")}${avisos.length > 3 ? "…" : ""}. Confira e apague a que sobrou.`);
+  if (incertas.length) partes.push(`<b>↻? Não tive certeza do lado</b> da${incertas.length > 1 ? "s" : ""} página${incertas.length > 1 ? "s" : ""} ${incertas.slice(0, 6).join(", ")}${incertas.length > 6 ? "…" : ""}. Confira (R gira).`);
+  if (partes.length) toast(partes.join("<br>"));
 }
 
 // ---------------- desfazer (Ctrl+Z) ----------------
@@ -60,6 +123,7 @@ async function desfazer() {
   } finally {
     ocupado = false; atualizarBotoesFonte(); renderGrade();
     if (ancora && paginas.some((p) => p.id === ancora)) mostrarPrevia(ancora);
+    else { ancora = null; $("#previa").style.display = "none"; $("#previaVazia").style.display = "block"; }
     if (window.Visor) window.Visor.atualizar();
   }
 }
@@ -223,7 +287,7 @@ async function onAssociadoMudou() {
   const letra = nome ? primeiraLetra(nome) : "?";
   $("#letraBadge").textContent = letra;
   const cont = $("#assocDocs");
-  if (!nome) { cont.innerHTML = ""; docsAssoc = []; renderTipos(); return; }
+  if (!nome) { cont.innerHTML = ""; docsAssoc = []; renderTipos(); renderResumoDocs(); if (window.Fila) window.Fila.atualizarChip(); return; }
   docsAssoc = await window.api.docsAssociado(nome);
   if ($("#inpAssociado").value.trim() !== nome) return; // digitou mais enquanto lia a pasta
   const parecidos = docsAssoc.length ? [] : nomesParecidos(nome);
@@ -242,6 +306,8 @@ async function onAssociadoMudou() {
     };
   });
   renderTipos();
+  renderResumoDocs();
+  if (window.Fila) window.Fila.atualizarChip();
 }
 
 // um tipo ja foi salvo pra este associado?
@@ -301,7 +367,10 @@ function renderGrade() {
     if (modo === "documentos" && p.tipo) {
       tipoTag = `<div class="pag-tipo" style="background:${corDoTipo(p.tipo)}">${esc(nomeDoTipo(p.tipo))}</div>`;
     }
-    const marcas = (p.colorido ? `<span title="colorida">🎨</span>` : "") + (p.recortada ? `<span title="recortada">✂</span>` : "");
+    const igual = p.repetidaDe ? paginas.findIndex((x) => x.id === p.repetidaDe) + 1 : 0; // numero atual da pagina igual
+    const marcas = (p.incerto ? `<span class="m-alerta" title="Não tive certeza do lado desta página — confira (R gira)">↻?</span>` : "") +
+      (igual ? `<span class="m-alerta" title="Parece igual à página ${igual} — confira se não escaneou duas vezes">≈${igual}</span>` : "") +
+      (p.colorido ? `<span title="colorida">🎨</span>` : "") + (p.recortada ? `<span title="recortada">✂</span>` : "");
     d.innerHTML = `<img src="${p.thumb || ""}" alt="pág ${idx + 1}" draggable="false" />
       <span class="pag-num">${idx + 1}</span>
       <span class="pag-check">${sel.has(p.id) ? "✓" : ""}</span>${marcas ? `<span class="pag-marcas">${marcas}</span>` : ""}${tipoTag}`;
@@ -386,14 +455,19 @@ function onProgresso(d) {
   }
 }
 
+// importacao de varios arquivos/paginas: junta os avisos (repetida / lado incerto) num so no fim
+let _loteNovas = null;
 function adicionarResultados(res) {
   let brancas = 0, erros = 0;
+  const novas = [];
   for (const r of res) {
     if (!r) continue;
     if (r.branca) { brancas++; continue; }
     if (r.erro) { erros++; continue; }
-    paginas.push(novaPagina(r));
+    const p = novaPagina(r);
+    paginas.push(p); novas.push(p);
   }
+  if (novas.length) { if (_loteNovas) _loteNovas.push(...novas); else conferirNovasPaginas(novas); }
   renderGrade();
   if (paginas.length && !sel.size) { sel.add(paginas[paginas.length - 1].id); ancora = paginas[paginas.length - 1].id; mostrarPrevia(ancora); renderGrade(); }
   return { brancas, erros };
@@ -507,6 +581,7 @@ async function importarCaminhos(caminhos, rotulo = "") {
   mostrarOverlay(pdfs.length && !imgs.length ? "Abrindo o PDF…" : "Processando imagens…");
   let addImgs = 0, addPdf = 0, brancas = 0, erros = 0;
   const avisos = [];
+  _loteNovas = [];
   try {
     for (const c of caminhos) {
       if (EXT_IMAGEM.test(c)) {
@@ -532,6 +607,8 @@ async function importarCaminhos(caminhos, rotulo = "") {
     if (avisos.length) msg += " " + avisos.join(" ");
     setStatus(msg, avisos.length || erros || !partes.length ? "aviso" : "ok");
   } finally {
+    const lote = _loteNovas; _loteNovas = null;
+    if (lote && lote.length) { conferirNovasPaginas(lote); renderGrade(); }
     ocupado = false; atualizarBotoesFonte(); esconderOverlay();
   }
 }
@@ -658,6 +735,85 @@ function cadaPaginaUmDoc() {
   setStatus(`${alvo.length} página(s) marcada(s) como documento avulso.`);
 }
 
+// paginas que as acoes de organizar usam: as marcadas (se 2 ou mais), senao todas
+function alvoOrganizar() {
+  const marcadas = paginas.filter((p) => sel.has(p.id));
+  return marcadas.length >= 2 ? marcadas : paginas.slice();
+}
+// troca as paginas de "alvo" (nas mesmas posicoes) pela nova ordem
+function reposicionar(alvo, novaOrdem) {
+  const posicoes = alvo.map((p) => paginas.indexOf(p)).sort((a, b) => a - b);
+  posicoes.forEach((pos, i) => { paginas[pos] = novaOrdem[i]; });
+}
+
+function inverterOrdem() {
+  const alvo = alvoOrganizar();
+  if (alvo.length < 2) { setStatus("Precisa de pelo menos 2 páginas.", "aviso"); return; }
+  const foto = fotoDaTela();
+  registrarDesfazer("inverter a ordem", async () => voltarFoto(foto));
+  reposicionar(alvo, alvo.slice().reverse());
+  renderGrade();
+  setStatus(`Ordem invertida (${alvo.length} páginas). Ctrl+Z desfaz.`, "ok");
+}
+
+// scanner sem frente e verso: escaneia as frentes, vira o maco e escaneia os versos.
+// Fica F1 F2 F3 V3 V2 V1 (virou o maco) ou F1 F2 F3 V1 V2 V3 -> vira F1 V1 F2 V2 F3 V3
+function intercalarFrenteVerso(versosAoContrario = true) {
+  const alvo = alvoOrganizar();
+  if (alvo.length < 2 || alvo.length % 2) {
+    mostrarAviso("Intercalar frente e verso", `Precisa de um número <b>par</b> de páginas (todas as frentes + todos os versos). Agora tem <b>${alvo.length}</b>.`);
+    return;
+  }
+  const n = alvo.length / 2;
+  const frentes = alvo.slice(0, n), versos = alvo.slice(n);
+  if (versosAoContrario) versos.reverse();
+  const nova = [];
+  for (let i = 0; i < n; i++) nova.push(frentes[i], versos[i]);
+  const foto = fotoDaTela();
+  registrarDesfazer("intercalar frente e verso", async () => voltarFoto(foto));
+  reposicionar(alvo, nova);
+  renderGrade();
+  setStatus(`Frente e verso intercalados: ${n} folhas (${alvo.length} páginas). Ctrl+Z desfaz.`, "ok");
+}
+
+// junta as marcadas numa pagina so (ex.: RG frente e verso numa folha A4)
+async function juntarSelecionadas() {
+  const marcadas = paginas.filter((p) => sel.has(p.id));
+  if (marcadas.length < 2) { setStatus("Marque 2 ou mais páginas (Ctrl+clique) pra juntar numa folha só.", "aviso"); return; }
+  if (marcadas.length > 4 && !confirm(`Juntar ${marcadas.length} páginas numa folha só? Vai ficar bem pequeno.`)) return;
+  if (ocupado) return;
+  ocupado = true; atualizarBotoesFonte(); mostrarOverlay("Juntando as páginas…");
+  let r;
+  try { r = await window.api.juntarPaginas(marcadas.map((p) => p.id)); }
+  finally { ocupado = false; atualizarBotoesFonte(); esconderOverlay(); }
+  if (!r || r.erro) { setStatus("Não consegui juntar: " + ((r && r.erro) || "erro"), "erro"); return; }
+  const itens = marcadas.map((p) => ({ p, i: paginas.indexOf(p) })).sort((a, b) => a.i - b.i);
+  const nova = novaPagina(r);
+  nova.tipo = marcadas[0].tipo;
+  paginas = paginas.filter((p) => !sel.has(p.id));
+  paginas.splice(itens[0].i, 0, nova);
+  sel.clear(); sel.add(nova.id); ancora = nova.id;
+  const ids = marcadas.map((p) => p.id);
+  registrarDesfazer("juntar páginas", async () => {
+    await window.api.removerPagina(nova.id);
+    await window.api.restaurarPaginas(ids);
+    paginas = paginas.filter((p) => p.id !== nova.id);
+    for (const { p, i } of itens) paginas.splice(Math.min(i, paginas.length), 0, p);
+  }, [nova.id]);
+  renderGrade(); mostrarPrevia(nova.id);
+  setStatus(`${marcadas.length} páginas juntadas numa folha só. Ctrl+Z desfaz.`, "ok");
+}
+
+// "o lado ja esta certo": tira o aviso ↻? das marcadas (ou de todas)
+async function confirmarLado() {
+  const alvo = (sel.size ? paginas.filter((p) => sel.has(p.id)) : paginas).filter((p) => p.incerto);
+  if (!alvo.length) { setStatus("Nenhuma página com o aviso ↻?.", ""); return; }
+  await window.api.confirmarLado(alvo.map((p) => p.id));
+  alvo.forEach((p) => (p.incerto = false));
+  renderGrade();
+  setStatus(`${alvo.length} página(s) conferida(s).`, "ok");
+}
+
 function limparTipos() {
   if (!paginas.some((p) => p.tipo)) return;
   const foto = fotoDaTela();
@@ -666,12 +822,26 @@ function limparTipos() {
   renderGrade();
 }
 
+// documentos obrigatorios que este associado ainda nao tem (nem salvos, nem marcados agora)
+function obrigatoriosFaltando() {
+  const obrig = (cfg.tipos || []).filter((t) => t.obrigatorio);
+  return { configurado: obrig.length > 0, falta: obrig.filter((t) => !tipoJaSalvo(t.sigla) && !paginas.some((p) => p.tipo === t.sigla)) };
+}
+
 function renderResumoDocs() {
   if (modo !== "documentos") return;
   const cont = $("#resumoDocs");
   const grupos = montarGrupos();
   const semTipo = paginas.filter((p) => !p.tipo).length;
   let html = "";
+  const ob = obrigatoriosFaltando();
+  if (ob.configurado && $("#inpAssociado").value.trim()) {
+    html += ob.falta.length
+      ? `<div class="obrig falta">📋 Ainda falta: <b>${ob.falta.map((t) => esc(t.nome)).join(", ")}</b></div>`
+      : `<div class="obrig ok">✓ Todos os documentos obrigatórios deste associado</div>`;
+  } else if (!ob.configurado) {
+    html += `<div class="obrig dica-obrig">Dica: marque os documentos <b>obrigatórios</b> em Configurações → Tipos (coluna "Obrig.") e o DigiDoc mostra aqui o que falta de cada associado.</div>`;
+  }
   for (const g of grupos) {
     html += `<div class="resumo-item"><span class="bolinha" style="background:${corDoTipo(g.tipoSigla)}"></span>
       <b>${esc(g.nomeArquivo)}</b> <span style="color:var(--texto-fraco)">— ${g.ids.length} pág.</span></div>`;
@@ -734,10 +904,19 @@ async function salvar() {
       zerarDesfazer();
       renderGrade();
     }
-    await onAssociadoMudou();
+    // faltou documento obrigatorio? avisa (nao impede de salvar)
+    const faltou = modo === "documentos" ? obrigatoriosFaltando() : null;
     await carregarAssociados();
+    await onAssociadoMudou();
+    if (faltou && faltou.configurado) {
+      const ainda = obrigatoriosFaltando().falta;
+      if (ainda.length) toast(`📋 <b>${esc(nome)}</b> ainda não tem: ${ainda.map((t) => esc(t.nome)).join(", ")}.`, "aviso", 8000);
+    }
+    // fila de associados: marca este como feito e ja poe o proximo nome
+    let foiProFila = false;
+    if (window.Fila) foiProFila = await window.Fila.aposSalvar(nome, limpou);
     // pronto pro proximo: volta pro nome ja selecionado (e so digitar o proximo associado)
-    if (limpou && cfg.aposSalvar.proximoAssociado !== false) {
+    if (!foiProFila && limpou && cfg.aposSalvar.proximoAssociado !== false) {
       const inp = $("#inpAssociado");
       setTimeout(() => { inp.focus(); inp.select(); }, 50);
     }
@@ -1031,7 +1210,9 @@ function fecharIphone() {
 }
 function aoReceberFotoCelular(reg) {
   if (!reg || reg.branca) return;
-  paginas.push(novaPagina(reg));
+  const nova = novaPagina(reg);
+  paginas.push(nova);
+  conferirNovasPaginas([nova]);
   _celularFotos++;
   const st = $("#celStatus");
   if (st) { st.textContent = `✓ ${_celularFotos} foto(s) recebida(s) do iPhone`; }
@@ -1057,6 +1238,7 @@ function linhaTipo(t, i) {
       <td><input type="text" class="curto t-sigla" value="${esc(t.sigla)}" placeholder="auto"></td>
       <td><input type="text" class="curto t-tecla" value="${esc(t.tecla || "")}" maxlength="1"></td>
       <td style="text-align:center">${sw("t-cor-" + i, t.colorido)}</td>
+      <td style="text-align:center" title="Obrigatório: o DigiDoc avisa quando o associado ainda não tem">${sw("t-obr-" + i, t.obrigatorio)}</td>
       <td class="acao"><button class="mini perigo t-del" title="remover">✕</button></td>
     </tr>`;
 }
@@ -1075,7 +1257,7 @@ function montarFormConfig(c) {
   <div class="cfg-grupo" id="gTipos">
     <h3>Tipos de documento</h3>
     <p class="sub" style="margin:-4px 0 10px">A <b>sigla</b> é o nome do arquivo (RG.pdf). A <b>tecla</b> marca as páginas rápido. Deixe a sigla em branco para ela sair sozinha do nome.</p>
-    <table class="tipos-tabela"><thead><tr><th>Nome</th><th>Sigla</th><th>Tecla</th><th>Cor?</th><th></th></tr></thead>
+    <table class="tipos-tabela"><thead><tr><th>Nome</th><th>Sigla</th><th>Tecla</th><th>Cor?</th><th title="Obrigatório: o DigiDoc mostra o que falta de cada associado">Obrig.</th><th></th></tr></thead>
       <tbody id="tiposBody">${tiposRows}</tbody></table>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       <button class="mini" id="btnAddTipo">＋ Adicionar um</button>
@@ -1221,10 +1403,11 @@ function wireLinhaTipo(tr) {
   const nome = tr.querySelector(".t-nome"), sigla = tr.querySelector(".t-sigla");
   nome.addEventListener("blur", () => { if (!sigla.value.trim() && nome.value.trim()) sigla.value = siglaAuto(nome.value); });
 }
+let _seqLinhaTipo = 0;
 function addLinhaTipo(t) {
-  const tb = $("#tiposBody"); const i = tb.children.length;
+  const tb = $("#tiposBody"); const i = "n" + ++_seqLinhaTipo; // id unico (nao repete depois de apagar linha)
   const tmp = document.createElement("tbody");
-  tmp.innerHTML = linhaTipo({ nome: t.nome || "", sigla: t.sigla || "", tecla: t.tecla || "", colorido: !!t.colorido }, i);
+  tmp.innerHTML = linhaTipo({ nome: t.nome || "", sigla: t.sigla || "", tecla: t.tecla || "", colorido: !!t.colorido, obrigatorio: !!t.obrigatorio }, i);
   const tr = tmp.firstElementChild;
   tb.appendChild(tr);
   wireLinhaTipo(tr);
@@ -1375,7 +1558,9 @@ function coletarConfig() {
     nome: tr.querySelector(".t-nome").value.trim() || "Documento",
     sigla: (tr.querySelector(".t-sigla").value.trim() || "DOC").toUpperCase(),
     tecla: tr.querySelector(".t-tecla").value.trim(),
-    colorido: tr.querySelector("#t-cor-" + i)?.checked || false,
+    // pelo prefixo do id (o numero do id nao bate com a posicao depois de apagar uma linha)
+    colorido: tr.querySelector('[id^="t-cor-"]')?.checked || false,
+    obrigatorio: tr.querySelector('[id^="t-obr-"]')?.checked || false,
   })).filter((t) => t.nome);
   return c;
 }

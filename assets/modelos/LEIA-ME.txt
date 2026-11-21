@@ -1,0 +1,7 @@
+orientacao-documento.onnx
+-------------------------
+Modelo PP-LCNet_x1_0_doc_ori (PaddleOCR / PaddlePaddle), classificador de
+orientacao de documento (0, 90, 180, 270 graus).
+Origem: https://huggingface.co/PaddlePaddle/PP-LCNet_x1_0_doc_ori_onnx
+Licenca: Apache-2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+Usado pelo DigiDoc no giro automatico (src/main/orientacao.js), 100% offline.

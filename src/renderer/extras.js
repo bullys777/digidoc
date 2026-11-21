@@ -607,7 +607,8 @@ function abrirAtalhos() {
     ["Geral", [["F2", "Escanear"], ["Ctrl + O", "Importar imagens ou PDF"], ["Ctrl + V", "Colar imagem"], ["F4", "Ir pro nome do associado"],
       ["Enter / Ctrl + S", "Salvar"], ["Ctrl + Z", "Desfazer"], ["F3", "Painel de produção"], ["F1", "Esta lista"]]],
     ["Páginas", [["← → ↑ ↓", "Andar entre as páginas"], ["Shift + setas", "Ir marcando várias"], ["Ctrl + A", "Marcar todas"], ["Home / End", "Primeira / última"],
-      ["R / Shift + R", "Girar pra direita / esquerda"], ["C", "Colorido / cinza"], ["Del", "Remover"], ["Espaço", "Ver grande"], ["1 … 9", "Marcar tipo (modo documento por documento)"]]],
+      ["R / Shift + R", "Girar pra direita / esquerda"], ["C", "Colorido / cinza"], ["Del", "Remover"], ["Espaço", "Ver grande"], ["1 … 9", "Marcar tipo (modo documento por documento)"],
+      ["⋯ Mais", "Intercalar frente e verso, inverter, juntar numa folha"]]],
     ["Ver grande", [["Roda do mouse", "Zoom"], ["Arrastar", "Mover a página"], ["Duplo clique", "Aproximar / caber"], ["X", "Recortar (Enter aplica)"],
       ["+ / − / 0", "Zoom / caber na tela"], ["← →", "Página anterior / próxima"], ["Esc", "Fechar"]]],
   ];
@@ -666,11 +667,156 @@ window.Atualizacao = (() => {
 })();
 
 // =====================================================================
+// MENU "⋯ MAIS" (organizar paginas)
+// =====================================================================
+function abrirMenuMais(botao) {
+  const velho = document.getElementById("menuMais");
+  if (velho) { velho.remove(); return; }
+  const marcadas = paginas.filter((p) => sel.has(p.id)).length;
+  const alvo = marcadas >= 2 ? `as ${marcadas} marcadas` : "todas as páginas";
+  const incertas = paginas.filter((p) => p.incerto).length;
+  const itens = [
+    { ic: "⇄", t: "Intercalar frente e verso", d: `scanner sem frente e verso: escaneie todas as frentes, vire o maço e escaneie os versos (${alvo})`, f: () => perguntarIntercalar() },
+    { ic: "⇅", t: "Inverter a ordem", d: `a última vira a primeira (${alvo})`, f: inverterOrdem },
+    { ic: "⧉", t: "Juntar as marcadas numa folha", d: marcadas >= 2 ? `RG frente e verso numa folha A4 só (${marcadas} páginas)` : "marque 2 páginas (Ctrl+clique), ex.: frente e verso do RG", f: juntarSelecionadas, off: marcadas < 2 },
+    { ic: "✓", t: "O lado está certo", d: incertas ? `tira o aviso ↻? de ${sel.size ? "das marcadas" : incertas + " página(s)"}` : "nenhuma página com aviso ↻?", f: confirmarLado, off: !incertas },
+    { ic: "☑", t: "Marcar todas", d: "Ctrl+A", f: () => { paginas.forEach((p) => sel.add(p.id)); renderGrade(); } },
+  ];
+  const m = document.createElement("div");
+  m.id = "menuMais"; m.className = "menu-mais";
+  m.innerHTML = itens.map((it, i) => `<button class="menu-item" data-i="${i}" ${it.off ? "disabled" : ""}><span class="mi-ic">${it.ic}</span><span><b>${esc(it.t)}</b><small>${esc(it.d)}</small></span></button>`).join("");
+  document.body.appendChild(m);
+  const r = botao.getBoundingClientRect();
+  m.style.left = Math.max(8, Math.min(innerWidth - m.offsetWidth - 8, r.left)) + "px";
+  m.style.top = Math.max(8, r.top - m.offsetHeight - 6) + "px";
+  m.querySelectorAll(".menu-item").forEach((b) => { b.onclick = () => { m.remove(); if (!ocupado) itens[+b.dataset.i].f(); }; });
+  setTimeout(() => {
+    const fora = (e) => { if (!m.contains(e.target) && e.target !== botao) { m.remove(); document.removeEventListener("mousedown", fora); } };
+    document.addEventListener("mousedown", fora);
+  }, 0);
+}
+function perguntarIntercalar() {
+  const alvo = alvoOrganizar();
+  const J = abrirJanela({ titulo: "⇄ Intercalar frente e verso", largura: 520,
+    corpo: `<p style="margin-top:0">Use quando o scanner <b>não faz frente e verso sozinho</b>: escaneie todas as <b>frentes</b>, vire o maço e escaneie todos os <b>versos</b>. O DigiDoc põe cada verso logo depois da sua frente.</p>
+      <p class="sub">${alvo.length} página(s) ${alvo.length % 2 ? "— <b style='color:var(--amarelo)'>precisa ser um número par</b>" : `= ${alvo.length / 2} folhas`}</p>
+      <p style="margin-bottom:0"><b>Como os versos saíram?</b></p>`,
+    rodape: `<span class="flex1"></span><button class="btn-sec" id="itMesma">Na mesma ordem</button><button class="btn-salvar" id="itInv">Ao contrário (virei o maço)</button>` });
+  J.q("#itInv").onclick = () => { J.fechar(); intercalarFrenteVerso(true); };
+  J.q("#itMesma").onclick = () => { J.fechar(); intercalarFrenteVerso(false); };
+}
+
+// =====================================================================
+// FILA DE ASSOCIADOS: cola a lista de nomes e vai fazendo um por um
+// =====================================================================
+window.Fila = (() => {
+  let fila = { itens: [], auto: true };
+  const chave = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+  const pendentes = () => fila.itens.filter((i) => !i.feito);
+  const salvar = () => window.api.filaSalvar(fila);
+
+  async function carregar() { try { fila = await window.api.filaObter(); } catch {} atualizarChip(); }
+
+  function proximo() {
+    const atual = chave($("#inpAssociado").value);
+    return pendentes().find((i) => chave(i.nome) !== atual) || null;
+  }
+  function atualizarChip() {
+    const b = document.getElementById("filaProx"), bf = document.getElementById("btnFila");
+    if (!b) return;
+    const pend = pendentes(), prox = proximo();
+    if (bf) bf.textContent = fila.itens.length ? `📋 Fila ${fila.itens.length - pend.length}/${fila.itens.length}` : "📋 Fila";
+    if (!prox) { b.classList.add("oculto"); return; }
+    b.classList.remove("oculto");
+    b.innerHTML = `Próximo: <b>${esc(prox.nome)}</b> ▶`;
+    b.onclick = async () => { $("#inpAssociado").value = prox.nome; await onAssociadoMudou(); setStatus(`Associado: ${prox.nome}`, "ok"); };
+  }
+  // depois de salvar: marca o nome como feito e (se ligado) ja poe o proximo. true = pos o proximo
+  async function aposSalvar(nome, limpou) {
+    const k = chave(nome);
+    let mudou = false;
+    for (const i of fila.itens) if (!i.feito && chave(i.nome) === k) { i.feito = true; mudou = true; }
+    if (mudou) await salvar();
+    let pos = false;
+    if (fila.auto && limpou) {
+      const prox = pendentes()[0];
+      if (prox) {
+        const inp = $("#inpAssociado");
+        inp.value = prox.nome;
+        await onAssociadoMudou();
+        setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 50);
+        setStatus(`${$("#status").textContent}  ▶ Próximo da fila: ${prox.nome}`, "ok");
+        pos = true;
+      } else if (mudou && fila.itens.length) toast("🎉 <b>Fila terminada!</b> Todos os associados da lista foram feitos.", "ok");
+    }
+    atualizarChip();
+    return pos;
+  }
+
+  function abrir() {
+    const J = abrirJanela({ titulo: "📋 Fila de associados", largura: 640,
+      corpo: `<p class="sub" style="margin-top:0">Cole a lista de nomes (um por linha) ou importe de um arquivo. Depois de salvar cada associado, o DigiDoc marca como feito e já põe o próximo nome.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn-sec" id="fiColar">📋 Colar nomes</button>
+          <button class="btn-sec" id="fiImportar">📄 Importar .txt / .csv</button>
+          <span class="flex1"></span>
+          <button class="mini" id="fiLimparFeitos">Tirar os feitos</button>
+          <button class="mini perigo" id="fiLimpar">Esvaziar</button>
+        </div>
+        <div class="cfg-linha"><label class="rot">Depois de salvar, já pôr o próximo nome da fila</label>
+          <label class="switch"><input type="checkbox" id="fiAuto"><span class="slider"></span></label></div>
+        <div id="fiLista" class="fila-lista"></div>`,
+      rodape: `<span class="sub" id="fiResumo"></span><span class="flex1"></span><button class="btn-salvar" data-ok>Pronto</button>` });
+    J.q("[data-ok]").onclick = J.fechar;
+    const auto = J.q("#fiAuto");
+    auto.checked = fila.auto !== false;
+    auto.onchange = async () => { fila.auto = auto.checked; await salvar(); };
+    const existentes = new Set((typeof nomesAssociados !== "undefined" ? nomesAssociados : []).map(chave));
+
+    function desenhar() {
+      const pend = pendentes().length;
+      J.q("#fiResumo").textContent = fila.itens.length ? `${fila.itens.length - pend} feitos · ${pend} faltando` : "fila vazia";
+      J.q("#fiLista").innerHTML = fila.itens.length ? fila.itens.map((it, i) => `
+        <div class="fila-item ${it.feito ? "feito" : ""}">
+          <span class="fila-n">${i + 1}</span>
+          <span class="fila-nome">${esc(it.nome)}${existentes.has(chave(it.nome)) ? ' <span class="fila-tag" title="Já existe pasta com esse nome">📁 já tem pasta</span>' : ""}</span>
+          <button class="mini" data-usar="${i}" title="Pôr no campo Associado">Usar</button>
+          <button class="mini" data-feito="${i}">${it.feito ? "↺ Desfazer" : "✓ Feito"}</button>
+          <button class="mini perigo" data-tirar="${i}" title="Tirar da fila">✕</button>
+        </div>`).join("") : `<p class="sub" style="padding:12px;text-align:center">Nenhum nome ainda. Clique em <b>Colar nomes</b>.</p>`;
+      J.qq("[data-usar]").forEach((b) => { b.onclick = async () => { $("#inpAssociado").value = fila.itens[+b.dataset.usar].nome; J.fechar(); await onAssociadoMudou(); $("#inpAssociado").focus(); }; });
+      J.qq("[data-feito]").forEach((b) => { b.onclick = async () => { const it = fila.itens[+b.dataset.feito]; it.feito = !it.feito; await salvar(); desenhar(); atualizarChip(); }; });
+      J.qq("[data-tirar]").forEach((b) => { b.onclick = async () => { fila.itens.splice(+b.dataset.tirar, 1); await salvar(); desenhar(); atualizarChip(); }; });
+    }
+    async function adicionar(nomes) {
+      const ja = new Set(fila.itens.map((i) => chave(i.nome)));
+      let n = 0;
+      for (const bruto of nomes) {
+        const nome = String(bruto).replace(/\s+/g, " ").trim();
+        if (nome.length < 2 || ja.has(chave(nome))) continue;
+        ja.add(chave(nome)); fila.itens.push({ nome, feito: false }); n++;
+      }
+      await salvar(); desenhar(); atualizarChip();
+      setStatus(`${n} nome(s) entraram na fila.`, "ok");
+    }
+    J.q("#fiColar").onclick = async () => { const t = await pedirTexto("Cole os nomes (um por linha) — Ctrl+Enter confirma", "", true); if (t) adicionar(t.split(/\r?\n/)); };
+    J.q("#fiImportar").onclick = async () => { const l = await window.api.filaImportar(); if (l && l.length) adicionar(l); };
+    J.q("#fiLimparFeitos").onclick = async () => { fila.itens = pendentes(); await salvar(); desenhar(); atualizarChip(); };
+    J.q("#fiLimpar").onclick = async () => { if (fila.itens.length && confirm("Esvaziar a fila inteira?")) { fila.itens = []; await salvar(); desenhar(); atualizarChip(); } };
+    desenhar();
+  }
+  return { carregar, abrir, aposSalvar, atualizarChip, proximo };
+})();
+
+// =====================================================================
 // liga tudo
 // =====================================================================
 window.Extras = { atalhos: abrirAtalhos, historico: abrirHistorico };
 (function ligarExtras() {
   window.Visor.ligar();
+  document.getElementById("btnMais").onclick = (e) => abrirMenuMais(e.currentTarget);
+  document.getElementById("btnFila").onclick = () => window.Fila.abrir();
+  window.Fila.carregar();
   document.getElementById("btnHistorico").onclick = abrirHistorico;
   document.getElementById("btnAtalhos").onclick = abrirAtalhos;
   document.getElementById("contadorHoje").onclick = () => window.Painel.abrir();
