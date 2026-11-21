@@ -1,6 +1,6 @@
 "use strict";
 // Lista de conferencia: registro de quais associados tiveram os documentos digitalizados.
-// SO nome (e codigo, se tiver) e a data — nenhum documento, imagem ou PDF vai pra ca.
+// SO o nome do associado (exatamente como esta escrito) e a data — nenhum documento vai pra ca.
 // Fica numa pasta escolhida pela pessoa (pode ser uma pasta do OneDrive/Google Drive: ai vai pra
 // nuvem, privada, pela sincronizacao do proprio servico). O DigiDoc nunca envia isso pra internet.
 //
@@ -17,23 +17,20 @@ const doisDig = (n) => String(n).padStart(2, "0");
 const dataLocal = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${doisDig(d.getMonth() + 1)}-${doisDig(d.getDate())}`; };
 const horaLocal = (ms) => { const d = new Date(ms); return `${doisDig(d.getHours())}:${doisDig(d.getMinutes())}`; };
 const dataBR = (iso) => { const [a, m, d] = iso.split("-"); return `${d}/${m}/${a}`; };
-const chave = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
-
-// "1234 - Maria Silva", "Maria Silva - 1234", "Maria Silva (1234)", "Maria Silva 1234" -> { nome, codigo }
-function separarCodigo(bruto) {
-  const s = String(bruto || "").replace(/\s+/g, " ").trim();
-  let m = s.match(/^(\d{3,})\s*[-–_.:]*\s*(.*[A-Za-zÀ-ú].*)$/);
-  if (m) return { nome: m[2].trim(), codigo: m[1] };
-  m = s.match(/^(.*[A-Za-zÀ-ú].*?)\s*[-–_(:\[]*\s*(\d{3,})\s*[)\]]?$/);
-  if (m) return { nome: m[1].replace(/[-–_(:\[]+$/, "").trim(), codigo: m[2] };
-  return { nome: s, codigo: "" };
-}
+// o nome e guardado/mostrado como esta escrito. So pra saber se e a MESMA pessoa ignora acento,
+// maiuscula, pontuacao e a ordem das palavras ("1234 - Maria" = "Maria 1234")
+const chave = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase()
+  .replace(/[^A-Z0-9]+/g, " ").trim().split(" ").filter(Boolean).sort().join(" ");
+const nomeLiteral = (s) => String(s || "").trim();
 
 function ler(pasta) {
   try {
     const d = JSON.parse(fs.readFileSync(path.join(pasta, NOME_DADOS), "utf8"));
-    return { versao: 1, itens: Array.isArray(d.itens) ? d.itens : [] };
-  } catch { return { versao: 1, itens: [] }; }
+    const itens = Array.isArray(d.itens) ? d.itens : [];
+    // versao 0.6.0 separava um "codigo" do nome: junta de volta (o nome fica inteiro de novo)
+    for (const it of itens) if (it.codigo) { it.nome = `${it.nome} ${it.codigo}`; delete it.codigo; }
+    return { versao: 2, itens };
+  } catch { return { versao: 2, itens: [] }; }
 }
 
 // grava num temporario e troca (pasta de nuvem as vezes segura o arquivo: tenta de novo)
@@ -49,19 +46,24 @@ function gravarArquivo(arq, conteudo) {
   }
 }
 
+// primeira passagem de cada associado (pro indice e pro total)
+function primeiras(itens) {
+  const m = new Map();
+  for (const it of itens) {
+    const k = chave(it.nome), v = m.get(k);
+    if (!v || it.data + it.hora < v.data + v.hora) m.set(k, it);
+  }
+  return m;
+}
+
 function gerarTxt(dados) {
   const itens = dados.itens.slice().sort((a, b) => (b.data + b.hora).localeCompare(a.data + a.hora));
-  const unicos = new Map();
-  for (const it of dados.itens) {
-    const k = chave(it.nome) + "|" + (it.codigo || "");
-    const v = unicos.get(k);
-    if (!v || it.data + it.hora < v.data + v.hora) unicos.set(k, it);
-  }
+  const unicos = primeiras(dados.itens);
   const L = [];
   const linha = "=".repeat(72), fina = "-".repeat(72);
   const agora = Date.now();
   L.push(linha, " LISTA DE CONFERÊNCIA — DigiDoc", " Associados cujos documentos passaram pela digitalização.",
-    " Só nomes e códigos: nenhum documento fica neste arquivo.", linha,
+    " Só nomes: nenhum documento fica neste arquivo.", linha,
     ` Atualizada em: ${dataBR(dataLocal(agora))} ${horaLocal(agora)}`,
     ` Total: ${unicos.size.toLocaleString("pt-BR")} associado(s) · ${itens.length.toLocaleString("pt-BR")} registro(s)`, "");
   let diaAtual = "";
@@ -73,18 +75,17 @@ function gerarTxt(dados) {
       const dia = DIAS[new Date(it.data + "T12:00:00").getDay()];
       L.push("", fina, ` ${dataBR(it.data)} — ${dia} — ${doDia[it.data]} associado(s)`, fina);
     }
-    const nome = it.nome.length > 46 ? it.nome.slice(0, 45) + "…" : it.nome.padEnd(46);
-    const cod = it.codigo ? `cód. ${it.codigo}` : "";
-    L.push(` ${it.hora}  ${nome} ${cod.padEnd(14)}${it.origem === "importado" ? "(importado)" : ""}`.replace(/\s+$/, ""));
+    const marca = it.origem === "importado" ? "(importado)" : "";
+    L.push(marca ? ` ${it.hora}  ${it.nome.padEnd(52)} ${marca}` : ` ${it.hora}  ${it.nome}`);
   }
   if (unicos.size) {
     L.push("", "", linha, " ÍNDICE A–Z  (data em que passou pela primeira vez)", linha);
     const az = [...unicos.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
     let letra = "";
     for (const it of az) {
-      const l = chave(it.nome)[0] || "#";
+      const l = (it.nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().match(/[A-Z0-9]/) || ["#"])[0];
       if (l !== letra) { letra = l; L.push("", ` [ ${letra} ]`); }
-      const txt = ` ${it.nome}${it.codigo ? ` (cód. ${it.codigo})` : ""} `;
+      const txt = ` ${it.nome} `;
       L.push(txt + ".".repeat(Math.max(3, 60 - txt.length)) + " " + dataBR(it.data));
     }
   }
@@ -98,17 +99,17 @@ function salvar(pasta, dados) {
   gravarArquivo(path.join(pasta, NOME_TXT), gerarTxt(dados));
 }
 
-// anota um associado salvo agora. Mesmo associado no mesmo dia: so atualiza a hora (nao repete)
+// anota um associado salvo agora (nome como foi digitado). Mesmo associado no mesmo dia: so atualiza a hora
 function registrar(pasta, nomeBruto, quandoMs = Date.now()) {
-  const { nome, codigo } = separarCodigo(nomeBruto);
+  const nome = nomeLiteral(nomeBruto);
   if (!nome) return null;
   const dados = ler(pasta);
   const data = dataLocal(quandoMs), hora = horaLocal(quandoMs), k = chave(nome);
-  const mesmo = dados.itens.find((i) => i.data === data && chave(i.nome) === k && (i.codigo || "") === (codigo || ""));
+  const mesmo = dados.itens.find((i) => i.data === data && chave(i.nome) === k);
   if (mesmo) { mesmo.hora = hora; mesmo.origem = "digitalizado"; }
-  else dados.itens.push({ nome, codigo, data, hora, origem: "digitalizado" });
+  else dados.itens.push({ nome, data, hora, origem: "digitalizado" });
   salvar(pasta, dados);
-  return { nome, codigo, data, hora };
+  return { nome, data, hora };
 }
 
 // ---- importar pastas ja digitalizadas ----
@@ -125,8 +126,7 @@ function subpastas(dir) {
 function dataDaPasta(dir) {
   try {
     const st = fs.statSync(dir);
-    const ms = st.birthtimeMs && st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs; // dia em que a pasta foi criada
-    return ms;
+    return st.birthtimeMs && st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs; // dia em que a pasta foi criada
   } catch { return 0; }
 }
 function escanear(caminhos) {
@@ -135,9 +135,9 @@ function escanear(caminhos) {
     for (const n of subpastas(dirLetra)) {
       if (/^\./.test(n)) continue;
       const dir = path.join(dirLetra, n);
-      const { nome, codigo } = separarCodigo(n);
+      const nome = nomeLiteral(n); // o nome da pasta, como esta
       const ms = dataDaPasta(dir);
-      if (nome && ms) achados.push({ nome, codigo, data: dataLocal(ms), hora: horaLocal(ms), pasta: dir });
+      if (nome && ms) achados.push({ nome, data: dataLocal(ms), hora: horaLocal(ms), pasta: dir });
     }
   };
   for (const c of caminhos || []) {
@@ -155,26 +155,24 @@ function importar(pasta, achados) {
   const dados = ler(pasta);
   const maisAntiga = new Map(); // associado -> data+hora mais antiga na lista
   for (const i of dados.itens) {
-    const k = chave(i.nome) + "|" + (i.codigo || ""), v = i.data + i.hora;
+    const k = chave(i.nome), v = i.data + i.hora;
     if (!maisAntiga.has(k) || v < maisAntiga.get(k)) maisAntiga.set(k, v);
   }
   let novos = 0, jaTinha = 0;
   for (const a of achados || []) {
-    const k = chave(a.nome) + "|" + (a.codigo || "");
-    const v = a.data + a.hora;
-    if (!a.nome || (maisAntiga.has(k) && maisAntiga.get(k).slice(0, 10) <= a.data)) { jaTinha++; continue; }
-    maisAntiga.set(k, v);
-    dados.itens.push({ nome: a.nome, codigo: a.codigo || "", data: a.data, hora: a.hora, origem: "importado" });
+    const nome = nomeLiteral(a.nome), k = chave(nome);
+    if (!nome || (maisAntiga.has(k) && maisAntiga.get(k).slice(0, 10) <= a.data)) { jaTinha++; continue; }
+    maisAntiga.set(k, a.data + a.hora);
+    dados.itens.push({ nome, data: a.data, hora: a.hora, origem: "importado" });
     novos++;
   }
   salvar(pasta, dados);
-  return { novos, jaTinha, total: new Set(dados.itens.map((i) => chave(i.nome) + "|" + (i.codigo || ""))).size };
+  return { novos, jaTinha, total: primeiras(dados.itens).size };
 }
 
 function resumo(pasta) {
   const dados = ler(pasta);
-  const unicos = new Set(dados.itens.map((i) => chave(i.nome) + "|" + (i.codigo || "")));
-  return { pasta, txt: path.join(pasta, NOME_TXT), existe: fs.existsSync(path.join(pasta, NOME_TXT)), total: unicos.size, registros: dados.itens.length };
+  return { pasta, txt: path.join(pasta, NOME_TXT), existe: fs.existsSync(path.join(pasta, NOME_TXT)), total: primeiras(dados.itens).size, registros: dados.itens.length };
 }
 
 // pastas de nuvem sincronizadas neste PC (os arquivos ficam privados na conta da pessoa)
@@ -189,4 +187,4 @@ function nuvens() {
   return out;
 }
 
-module.exports = { registrar, escanear, importar, resumo, nuvens, separarCodigo, NOME_TXT, _gerarTxt: gerarTxt };
+module.exports = { registrar, escanear, importar, resumo, nuvens, NOME_TXT, _gerarTxt: gerarTxt };

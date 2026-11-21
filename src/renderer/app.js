@@ -1331,7 +1331,7 @@ function montarFormConfig(c) {
 
   <div class="cfg-grupo" id="gConferencia">
     <h3>Lista de conferência</h3>
-    ${linhaSw("cfgConfAtivo", "Anotar cada associado salvo na lista", "um arquivo TXT organizado por data com o nome (e o código, se tiver) de quem já passou pela digitalização. Só nomes — nenhum documento vai pra lista.", !(c.conferencia && c.conferencia.ativo === false))}
+    ${linhaSw("cfgConfAtivo", "Anotar cada associado salvo na lista", "um arquivo TXT organizado por data com o nome de cada associado (exatamente como está escrito) que já passou pela digitalização. Só nomes — nenhum documento vai pra lista.", !(c.conferencia && c.conferencia.ativo === false))}
     <div class="cfg-linha"><label class="rot">Pasta da lista<span class="sub" id="cfgConfPastaTxt">${esc((c.conferencia && c.conferencia.pasta) || (confInfo && confInfo.padrao) || "")}</span></label>
       <button class="btn-sec" id="btnConfPasta">Mudar…</button></div>
     ${confInfo && confInfo.nuvens && confInfo.nuvens.length ? `<div class="cfg-linha conf-nuvens"><label class="rot">Guardar na nuvem<span class="sub">usa a pasta do serviço que já sincroniza neste PC: a lista fica <b>privada</b> na sua conta (ninguém vê, a não ser que você compartilhe)</span></label>

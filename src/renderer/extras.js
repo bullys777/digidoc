@@ -835,9 +835,9 @@ window.Conferencia = (() => {
     const J = abrirJanela({ titulo: "📥 Importar pra lista de conferência", largura: 720,
       corpo: achados.length ? `
         <p style="margin-top:0">Encontrei <b>${fmtNum(achados.length)} associado(s)</b> em ${esc(pastas.join(", "))} — pastas criadas de <b>${dataCurta(achados[0].data)}/${achados[0].data.slice(0, 4)}</b> a <b>${dataCurta(achados[achados.length - 1].data)}/${achados[achados.length - 1].data.slice(0, 4)}</b>.</p>
-        <p class="sub">Vai pra lista só o <b>nome</b> (e o código, se tiver) e o <b>dia em que a pasta foi criada</b>. Quem já está na lista não entra de novo.</p>
-        <div class="pn-lista" style="max-height:340px"><table class="pn-tabela"><thead><tr><th>Dia</th><th>Associado</th><th>Código</th><th>Pasta</th></tr></thead><tbody>
-          ${achados.slice(0, max).map((a) => `<tr><td class="sub">${dataCurta(a.data)}/${a.data.slice(0, 4)}</td><td><b>${esc(a.nome)}</b></td><td>${esc(a.codigo || "")}</td><td class="sub">${esc(a.pasta.split(/[\\/]/).slice(-2, -1)[0] || "")}</td></tr>`).join("")}
+        <p class="sub">Vai pra lista só o <b>nome da pasta</b> (exatamente como está escrito) e o <b>dia em que a pasta foi criada</b>. Quem já está na lista não entra de novo.</p>
+        <div class="pn-lista" style="max-height:340px"><table class="pn-tabela"><thead><tr><th>Dia</th><th>Associado</th><th>Pasta</th></tr></thead><tbody>
+          ${achados.slice(0, max).map((a) => `<tr><td class="sub">${dataCurta(a.data)}/${a.data.slice(0, 4)}</td><td><b>${esc(a.nome)}</b></td><td class="sub">${esc(a.pasta.split(/[\\/]/).slice(-2, -1)[0] || "")}</td></tr>`).join("")}
         </tbody></table></div>
         ${achados.length > max ? `<p class="sub">Mostrando ${max} de ${fmtNum(achados.length)} — todos vão ser importados.</p>` : ""}`
         : `<p style="margin-top:0">Não achei pastas de associados em ${esc(pastas.join(", "))}.</p><p class="sub">Escolha a pasta principal dos digitalizados ou as pastas das letras (ex.: "Digitalizados A") — dentro delas ficam as pastas com o nome de cada associado.</p>`,

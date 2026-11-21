@@ -3,6 +3,9 @@
 Cada versão nova começa com `## <versão>`. As linhas com `-` viram a lista de
 novidades que aparece no aviso de atualização dentro do app.
 
+## 0.6.1
+- Lista de conferência: o nome do associado vai exatamente como está escrito (no campo ou na pasta), sem separar números
+
 ## 0.6.0
 - Lista de conferência: cada associado salvo é anotado num arquivo TXT organizado por data (com hora, código se tiver, e índice de A a Z) — só nomes, nenhum documento
 - A pasta da lista é você que escolhe: numa pasta do OneDrive ou Google Drive ela vai pra nuvem e fica privada na sua conta
