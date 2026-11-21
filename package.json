@@ -1,0 +1,52 @@
+{
+  "name": "digitalizador",
+  "productName": "DigiDoc",
+  "version": "0.3.0",
+  "description": "DigiDoc - digitalizador de documentos em lote",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win dir && node scripts/empacotar.js",
+    "publicar": "node scripts/publicar.js"
+  },
+  "digidoc": {
+    "repositorio": "bullys777/digidoc"
+  },
+  "author": "Otavio Martins",
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8",
+    "png-to-ico": "^3.0.0"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "qrcode": "^1.5.4",
+    "sharp": "0.33.5",
+    "tesseract.js": "^6.0.1"
+  },
+  "build": {
+    "appId": "com.local.digidoc",
+    "productName": "DigiDoc",
+    "electronLanguages": ["pt-BR", "en-US"],
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "!**/node_modules/tesseract.js-core/*-lstm.wasm",
+      "!**/node_modules/tesseract.js-core/*-lstm.wasm.js",
+      "!**/*.map"
+    ],
+    "asarUnpack": [
+      "**/node_modules/sharp/**",
+      "**/node_modules/@img/**",
+      "**/node_modules/tesseract.js/**",
+      "**/node_modules/tesseract.js-core/**",
+      "assets/tesseract/**"
+    ],
+    "win": {
+      "target": "dir",
+      "icon": "build/icon.ico"
+    }
+  }
+}

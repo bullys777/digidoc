@@ -1,0 +1,95 @@
+﻿=================================================================
+ DIGIDOC  -  Digitalizador de documentos
+ Desenvolvido por Otavio Martins
+=================================================================
+
+INSTALAR EM QUALQUER PC (pela internet)
+---------------------------------------
+Baixe o  DigiDoc-Setup.exe  na pagina de versoes do DigiDoc no GitHub
+(o link fica no README do projeto) e de dois cliques.
+- Se o Windows avisar "O Windows protegeu o computador":
+  clique em  Mais informacoes  >  Executar assim mesmo.
+- Nao precisa de administrador. Cria atalho na Area de Trabalho e no
+  Menu Iniciar, e aparece em Configuracoes > Aplicativos.
+- Depois de instalado ele se ATUALIZA SOZINHO: quando sai versao nova,
+  aparece um botao verde embaixo da tela ("Nova versao - atualizar").
+
+PELO PENDRIVE (sem internet)
+----------------------------
+De dois cliques em  "INSTALAR DigiDoc no PC.bat"
+- Copia o DigiDoc pro PC (uma vez so) e cria atalho na Area de Trabalho.
+- Nao precisa de internet nem de admin. Instalado ele abre na hora.
+
+ABRIR DIRETO DO PENDRIVE
+------------------------
+De dois cliques em  DigiDoc.exe  (na raiz do pendrive)
+- Aparece "Abrindo..." na hora. Pelo pendrive demora mais, porque
+  este pendrive e lento (~0,7 MB/s). Um pendrive USB 3.0 resolve.
+- A config e a pasta "Digitalizado" ficam em DigiDoc\ no pendrive.
+
+REMOVER DO PC
+-------------
+Configuracoes do Windows > Aplicativos > DigiDoc > Desinstalar
+(ou no app: Configuracoes > Opcoes avancadas > Desinstalar,
+ ou "DESINSTALAR DigiDoc do PC.bat" do pendrive)
+- Remove SO o programa (exe, motor, config, atalho).
+- Seus PDFs e a pasta "Digitalizado" NAO somem nem se movem:
+  ficam exatamente onde estao. Apague a mao quando quiser.
+
+
+DOIS MODOS (escolha em cima)
+----------------------------
+- DOSSIE COMPLETO: tudo num PDF so (associado antigo).
+- DOCUMENTO POR DOCUMENTO: um PDF por tipo (RG, CPF...).
+
+Como salva:  Digitalizado\Letra M\Maria Silva\RG.pdf
+- Pasta criada automatica ao salvar. PDF <= 2 MB, nome <= 40.
+- Se o nome digitado for parecido com um que ja existe, o DigiDoc
+  avisa (evita pasta duplicada). Clique no nome sugerido pra usar.
+
+
+DE ONDE VEM AS PAGINAS (rodape)
+-------------------------------
+- Escanear (F2): o DigiDoc acha o scanner sozinho (USB ou rede) e ve o
+  que ele tem. Impressora com alimentador e vidro: usa o alimentador
+  se tiver papel, senao o vidro. Os botoes Alimentador / Vidro
+  aparecem quando o aparelho tem os dois (pra forcar um deles).
+- O nome do scanner fica no botao da esquerda (clique pra trocar).
+- Importar (Ctrl+O): imagens OU PDF (cada pagina do PDF vira uma
+  pagina). Tambem da pra arrastar pra janela ou colar (Ctrl+V).
+- iPhone: abre um QR Code; leia com a camera e as fotos caem
+  sozinhas no PC (iPhone e PC na mesma rede).
+
+
+ARRUMAR AS PAGINAS
+------------------
+- Duplo clique (ou Espaco) numa pagina: ve grande, com zoom (roda
+  do mouse), girar, cor e RECORTAR (botao Recortar ou tecla X).
+- 🎨 Cor (tecla C): deixa a pagina colorida ou em cinza. O tipo
+  "Foto 3x4" ja sai colorido sozinho.
+- Errou? Ctrl+Z desfaz (remover, girar, ordem, tipo, recorte, cor).
+
+
+CONTAGEM / PAINEL (F3 ou clique em "Hoje" embaixo)
+--------------------------------------------------
+- Quantos associados e PDFs hoje, ontem, na semana e no total.
+- Letra atual (a do ultimo salvo) e grafico por letra e por dia.
+- Quem ainda nao tem cada documento (ex.: "Sem RG").
+- Busca de associado, abrir a pasta, e Relatorio pro Excel.
+- Meta do dia: Configuracoes > Producao.
+- 🕘 no topo: historico do que foi salvo neste PC.
+
+
+BOTOES DO TOPO
+--------------
+  🕘  Historico (o que ja foi salvo)
+  🎮  Jogos (17 joguinhos pra dar uma pausa)
+  📺  Tutorial animado com narracao (ligue o som)
+  ⚙   Configuracoes (tudo configuravel)
+
+
+ATALHOS (F1 mostra todos)
+-------------------------
+  F2 escanear | Ctrl+O importar | F4 nome | Enter/Ctrl+S salvar
+  1..9 marca tipo | R / Shift+R gira | C cor | Del remove
+  Espaco ver grande | Ctrl+Z desfaz | F3 painel

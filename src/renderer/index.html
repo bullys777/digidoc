@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DigiDoc</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="tutorial.css" />
+  <link rel="stylesheet" href="games.css" />
+  <link rel="stylesheet" href="extras.css" />
+</head>
+<body>
+  <!-- Cabecalho -->
+  <header class="topo">
+    <div class="marca">
+      <span class="logo">▣</span>
+      <span class="marca-txt">
+        <span class="nome-app">DigiDoc</span>
+        <span class="assinatura">Desenvolvido por Otavio Martins</span>
+      </span>
+    </div>
+
+    <div class="modos" role="tablist" aria-label="Modo">
+      <button id="modoDossie" class="modo ativo" title="Tudo num PDF so (associado antigo)">
+        <span class="modo-ic">📦</span> Dossiê completo
+      </button>
+      <button id="modoDocs" class="modo" title="Um PDF por tipo de documento">
+        <span class="modo-ic">📄</span> Documento por documento
+      </button>
+    </div>
+
+    <div class="topo-dir">
+      <button id="btnHistorico" class="icone" title="Histórico — o que já foi salvo">🕘</button>
+      <button id="btnJogos" class="icone" title="Jogos">🎮</button>
+      <button id="btnTutorial" class="icone" title="Tutorial animado">📺</button>
+      <button id="btnConfig" class="icone" title="Configurações">⚙</button>
+    </div>
+  </header>
+
+  <!-- Linha do associado -->
+  <section class="assoc">
+    <span class="letra-badge" id="letraBadge">?</span>
+    <div class="assoc-campo">
+      <label for="inpAssociado">Associado</label>
+      <input id="inpAssociado" list="listaAssociados" autocomplete="off"
+             placeholder="Digite o nome do associado…" spellcheck="false" />
+      <datalist id="listaAssociados"></datalist>
+    </div>
+    <div class="assoc-docs" id="assocDocs" title="PDFs já salvos na pasta deste associado"></div>
+    <button id="btnAbrirPasta" class="btn-sec" title="Abrir a pasta deste associado">📂 Pasta</button>
+  </section>
+
+  <!-- Corpo -->
+  <main class="corpo">
+    <!-- Coluna de paginas -->
+    <section class="col-pags">
+      <div class="col-cab">
+        <span id="contadorPags">0 páginas</span>
+        <div class="col-cab-acoes">
+          <button id="btnSelTudo" class="mini">Selecionar tudo</button>
+          <button id="btnLimpar" class="mini perigo">Limpar</button>
+        </div>
+      </div>
+      <div id="grade" class="grade" tabindex="0" aria-label="Páginas">
+        <div class="vazio" id="vazio">
+          <div class="vazio-ic">🗎</div>
+          <p>Nenhuma página ainda.<br>Escaneie, importe (imagem ou PDF) ou use o iPhone para começar.</p>
+        </div>
+      </div>
+      <div class="pags-ferramentas">
+        <button id="btnGirarEsq" class="mini" title="Girar para a esquerda (Shift+R)">↺</button>
+        <button id="btnGirar" class="mini" title="Girar para a direita (R)">↻ Girar</button>
+        <button id="btnEsq" class="mini" title="Mover para a esquerda">←</button>
+        <button id="btnDir" class="mini" title="Mover para a direita">→</button>
+        <button id="btnCor" class="mini" title="Colorido / tons de cinza nas selecionadas">🎨 Cor</button>
+        <button id="btnVer" class="mini" title="Ver grande, dar zoom e recortar (Espaço ou duplo clique)">🔍 Ver</button>
+        <button id="btnRemover" class="mini perigo" title="Remover selecionadas (Del)">🗑 Remover</button>
+        <span class="flex1"></span>
+        <button id="btnDesfazer" class="mini" title="Desfazer (Ctrl+Z)" disabled>↶ Desfazer</button>
+      </div>
+    </section>
+
+    <!-- Coluna direita: previa + acoes do modo -->
+    <section class="col-dir">
+      <div class="previa-wrap" id="previaWrap" title="Duplo clique para ver grande">
+        <img id="previa" class="previa" alt="Prévia" />
+        <div id="previaVazia" class="previa-vazia">Clique numa página para ver a prévia</div>
+      </div>
+
+      <!-- Painel do modo DOCUMENTOS (tipos) -->
+      <div id="painelDocs" class="painel-docs oculto">
+        <div class="painel-tit">Marque as páginas e escolha o tipo:</div>
+        <div id="botoesTipos" class="botoes-tipos"></div>
+        <div class="doc-extra">
+          <button id="btnCadaPag" class="mini">1 página = 1 documento</button>
+          <button id="btnLimparTipos" class="mini">Limpar marcações</button>
+        </div>
+        <div id="resumoDocs" class="resumo-docs"></div>
+      </div>
+
+      <!-- Painel do modo DOSSIE -->
+      <div id="painelDossie" class="painel-dossie">
+        <p class="dica">Todas as páginas vão para <b>um único PDF</b>, na pasta do associado.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Rodape: fontes + salvar -->
+  <footer class="rodape">
+    <div class="fontes">
+      <button id="scannerChip" class="scanner-chip" title="Escolher qual scanner usar"><span class="chip-l1">🖨 <span id="scannerNome">escolher scanner</span> ▾</span><span id="scannerTipo" class="chip-l2"></span></button>
+      <button id="btnEscanear" class="fonte principal" title="Descobre sozinho de onde vem o papel: alimentador (se tiver papel) ou vidro"><span id="icoEscanear">🖨</span> Escanear</button>
+      <button id="btnAlim" class="fonte mini" title="Escanear do alimentador"><span>📚</span> Alimentador</button>
+      <button id="btnVidro" class="fonte mini" title="Escanear do vidro"><span>📄</span> Vidro</button>
+      <button id="btnImportar" class="fonte sec"><span>🖼</span> Importar</button>
+      <button id="btnIphone" class="fonte sec"><span>📱</span> iPhone</button>
+    </div>
+    <div class="salvar-area">
+      <button id="btnAddPdf" class="btn-sec" title="Adicionar as páginas atuais a um PDF que já foi salvo">➕ a um PDF</button>
+      <select id="selNivel" class="sel-nivel" title="Nível de compressão">
+        <option value="pouca">Pouca compressão</option>
+        <option value="recomendada">Recomendada</option>
+        <option value="extrema">Extrema</option>
+      </select>
+      <button id="btnSalvar" class="btn-salvar">💾 Salvar dossiê</button>
+    </div>
+  </footer>
+
+  <!-- Barra de status -->
+  <div class="status-barra">
+    <div id="status" class="status">Pronto.</div>
+    <button id="avisoAtualizacao" class="status-btn atualizar oculto" title="Tem versão nova do DigiDoc"></button>
+    <button id="contadorHoje" class="status-btn" title="Ver o histórico de hoje">Hoje: nada salvo ainda</button>
+    <button id="btnAtalhos" class="status-btn" title="Atalhos de teclado">⌨ Atalhos (F1)</button>
+  </div>
+
+  <!-- Visualizador: ver grande, zoom, girar, recortar -->
+  <div id="visor" class="visor oculto">
+    <div class="visor-barra">
+      <button id="vAnt" class="v-btn" title="Página anterior (←)">◀</button>
+      <span id="vInfo" class="v-info">Página 1 de 1</span>
+      <button id="vProx" class="v-btn" title="Próxima página (→)">▶</button>
+      <span class="v-sep"></span>
+      <button id="vGirarEsq" class="v-btn" title="Girar para a esquerda (Shift+R)">↺</button>
+      <button id="vGirar" class="v-btn" title="Girar para a direita (R)">↻</button>
+      <button id="vRecortar" class="v-btn" title="Recortar (C)">✂ Recortar</button>
+      <button id="vCor" class="v-btn" title="Colorido / tons de cinza">🎨 Cor</button>
+      <button id="vRemover" class="v-btn perigo" title="Remover esta página (Del)">🗑</button>
+      <span class="flex1"></span>
+      <button id="vMenos" class="v-btn" title="Diminuir (−)">−</button>
+      <span id="vZoom" class="v-info" style="min-width:52px;text-align:center">100%</span>
+      <button id="vMais" class="v-btn" title="Aumentar (+)">+</button>
+      <button id="vAjustar" class="v-btn" title="Caber na tela (0)">Ajustar</button>
+      <button id="vFechar" class="v-btn" title="Fechar (Esc)">✕</button>
+    </div>
+    <div id="vPalco" class="visor-palco">
+      <img id="vImg" alt="Página" draggable="false" />
+      <div id="vCorte" class="visor-corte oculto"></div>
+      <div id="vCarregando" class="visor-carregando oculto"><div class="spinner"></div></div>
+    </div>
+    <div id="vCorteBarra" class="visor-corte-barra oculto">
+      <span>✂ Arraste sobre a página para marcar a parte que fica.</span>
+      <span class="flex1"></span>
+      <button id="vTirarCorte" class="btn-sec oculto">Voltar a página inteira</button>
+      <button id="vCancelarCorte" class="btn-sec">Cancelar</button>
+      <button id="vAplicarCorte" class="btn-salvar" disabled>Aplicar recorte</button>
+    </div>
+  </div>
+
+  <!-- Overlay de progresso -->
+  <div id="overlay" class="overlay oculto">
+    <div class="overlay-cx">
+      <div class="spinner"></div>
+      <div id="overlayMsg">Processando…</div>
+      <div class="barra"><div id="barraFill" class="barra-fill"></div></div>
+      <button id="btnCancelarScan" class="btn-sec oculto" style="margin-top:14px">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- Modal de configuracoes -->
+  <div id="modalConfig" class="modal oculto">
+    <div class="modal-cx grande">
+      <div class="modal-cab">
+        <h2>Configurações</h2>
+        <button id="btnFecharConfig" class="icone">✕</button>
+      </div>
+      <div id="configCorpo" class="modal-corpo"></div>
+      <div class="modal-rod">
+        <button id="btnRestaurar" class="btn-sec">Restaurar padrão</button>
+        <span class="flex1"></span>
+        <button id="btnCancelarConfig" class="btn-sec">Cancelar</button>
+        <button id="btnSalvarConfig" class="btn-salvar">Salvar configurações</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal iPhone -->
+  <div id="modalIphone" class="modal oculto">
+    <div class="modal-cx">
+      <div class="modal-cab"><h2>📱 iPhone</h2><button id="btnFecharIphone" class="icone">✕</button></div>
+      <div class="modal-corpo" id="iphoneCorpo"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="extras.js"></script>
+  <script src="som.js"></script>
+  <script src="tutorial.js"></script>
+  <script src="games.js"></script>
+</body>
+</html>

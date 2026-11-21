@@ -1,0 +1,30 @@
+# ===== NUNCA vai pro GitHub: documentos e dados de associados (LGPD) =====
+*.pdf
+*.PDF
+Digitalizado/
+**/Digitalizado/
+digitalizador-config.json
+digitalizador-config.json.salvando
+historico.json
+*.salvando
+digidoc-instalado.txt
+# imagens escaneadas/fotos soltas (o unico exemplo permitido e assets/amostra.jpg, com dados ficticios)
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+*.bmp
+*.heic
+*.webp
+!assets/amostra.jpg
+!assets/icon.png
+
+# ===== gerado / baixado =====
+node_modules/
+dist/
+naps2/
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
