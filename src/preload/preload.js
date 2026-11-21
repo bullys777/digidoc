@@ -90,6 +90,13 @@ const api = {
   celularParar: () => ipcRenderer.invoke("celular:parar"),
   onCelularFoto: (cb) => ipcRenderer.on("celular:foto", (_e, d) => cb(d)),
 
+  // cantinho
+  onCantinhoPanico: (cb) => ipcRenderer.on("cantinho:panico", () => cb()),
+  onJanelaBlur: (cb) => ipcRenderer.on("janela:blur", () => cb()),
+  sairTelaCheia: () => ipcRenderer.invoke("janela:sairTelaCheia"),
+  cantinhoEstado: (st) => ipcRenderer.invoke("cantinho:estado", st),
+  cantinhoApagarJogos: () => ipcRenderer.invoke("cantinho:apagarJogos"),
+
   // eventos
   onProgresso: (cb) => ipcRenderer.on("progresso", (_e, d) => cb(d)),
   onScannerMudou: (cb) => ipcRenderer.on("scanner:mudou", (_e, d) => cb(d)),

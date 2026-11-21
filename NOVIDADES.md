@@ -3,6 +3,11 @@
 Cada versão nova começa com `## <versão>`. As linhas com `-` viram a lista de
 novidades que aparece no aviso de atualização dentro do app.
 
+## 0.4.1
+- A pasta da letra segue o padrão das pastas que já existem (ex.: "Digitalizados A" → cria "Digitalizados E"). Espaços não contam, então pasta com erro de digitação também é reconhecida
+- A pasta do associado é reaproveitada mesmo se estiver escrita diferente (maiúsculas, acentos ou espaços), sem criar pasta duplicada
+- Rodapé mais compacto: não quebra mais linha no modo documento por documento
+
 ## 0.4.0
 - Giro automático novo: usa um modelo de inteligência artificial feito só pra orientação de documento (PaddleOCR). Nos testes acertou 24 de 24, inclusive RG pequeno no vidro, que o sistema antigo errava
 - Quando não tem certeza do lado (ex.: foto sem texto), o DigiDoc não gira e marca a página com ↻? pra você conferir

@@ -1296,7 +1296,7 @@ function montarFormConfig(c) {
 
     <div class="cfg-grupo">
       <h3>Pastas e nomes</h3>
-      <div class="cfg-linha"><label class="rot">Formato da pasta da letra<span class="sub">{letra} = primeira letra. Ex.: "Letra A"</span></label>
+      <div class="cfg-linha"><label class="rot">Formato da pasta da letra<span class="sub">O DigiDoc segue sozinho o padrão das pastas que já existem (ex.: "Digitalizados A" → cria "Digitalizados E"; espaços não contam). Este formato só vale numa pasta vazia. {letra} = primeira letra.</span></label>
         <input type="text" id="cfgFormatoLetra" value="${esc(c.formatoPastaLetra)}"></div>
       <div class="cfg-linha"><label class="rot">Nome do associado na pasta</label>
         <select id="cfgFormatoNome">
@@ -1590,7 +1590,8 @@ function onTecla(e) {
   // Enter, R e Del nao mexem nas paginas por baixo — ex.: Enter pra fechar o "Faltou pagina!" salvava o PDF
   if (document.querySelector(".modal:not(.oculto)")) return;
   if (!$("#visor").classList.contains("oculto")) return; // o visualizador tem os atalhos dele
-  if ($(".tut-camada:not(.oculto), .jogos-camada:not(.oculto)")) return; // tutorial / jogos abertos
+  if ($(".tut-camada:not(.oculto)")) return; // tutorial aberto
+  if (window.Cantinho && window.Cantinho.aberto()) return;
   const ctrl = e.ctrlKey || e.metaKey;
   // atalhos que valem ate digitando o nome
   if (ctrl && (e.key === "s" || e.key === "S")) { e.preventDefault(); if (!$("#btnSalvar").disabled) salvar(); else atualizarSalvarComAviso(); return; }

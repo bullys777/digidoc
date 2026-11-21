@@ -106,7 +106,6 @@ CONTAGEM / PAINEL (F3 ou clique em "Hoje" embaixo)
 BOTOES DO TOPO
 --------------
   🕘  Historico (o que ja foi salvo)
-  🎮  Jogos (17 joguinhos pra dar uma pausa)
   📺  Tutorial animado com narracao (ligue o som)
   ⚙   Configuracoes (tudo configuravel)
 

@@ -1,0 +1,6 @@
+Jogos de codigo aberto incluidos no DigiDoc (cada pasta tem a licenca original):
+- 2048 ............ https://github.com/gabrielecirulli/2048 (MIT)
+- tetris .......... https://github.com/jakesgordon/javascript-tetris (MIT)
+- dino ............ https://github.com/wayou/t-rex-runner (BSD-3-Clause)
+- adarkroom ....... https://github.com/doublespeakgames/adarkroom (MPL-2.0) — sem alteracoes no codigo;
+                    removidos so o rastreador (Google Analytics), o jQuery da internet e os outros idiomas.

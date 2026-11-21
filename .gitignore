@@ -19,6 +19,10 @@ digidoc-instalado.txt
 *.webp
 !assets/amostra.jpg
 !assets/icon.png
+# imagens dos jogos de codigo aberto incluidos no app (nao sao documentos)
+!assets/cantinho-jogos/**/*.png
+!assets/cantinho-jogos/**/*.jpg
+!assets/cantinho-jogos/**/*.gif
 
 # ===== gerado / baixado =====
 node_modules/

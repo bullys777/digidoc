@@ -176,8 +176,20 @@ function criarJanela() {
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true, nodeIntegration: false,
+      webviewTag: true, // so pro cantinho (YouTube), travado em will-attach-webview
     },
   });
+  // cantinho: o <webview> so abre YouTube, isolado (sem preload/node, sandbox) e numa sessao em
+  // memoria — nada fica gravado no PC quando o app fecha
+  win.webContents.on("will-attach-webview", (e, prefs, params) => {
+    delete prefs.preload;
+    prefs.nodeIntegration = false; prefs.contextIsolation = true; prefs.sandbox = true;
+    const src = params.src || "";
+    params.partition = ehJogoLocal(src) ? PARTICAO_JOGOS : PARTICAO_CANTINHO;
+    if (!SITE_CANTINHO.test(src) && !ehJogoLocal(src)) e.preventDefault();
+  });
+  // a janela perdeu o foco (Alt+Tab, clicou em outro programa): o cantinho se esconde
+  win.on("blur", () => enviar("janela:blur"));
   win.removeMenu();
   let mostrou = false;
   const mostrar = () => {
@@ -209,8 +221,86 @@ function criarJanela() {
   win.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
 }
 
+// ---- cantinho (escondido): sites e jogos num <webview> isolado (processo separado, sandbox) ----
+const PARTICAO_CANTINHO = "cantinho";              // sites: so na memoria (nada fica gravado ao fechar)
+const PARTICAO_JOGOS = "persist:cantinho-jogos";   // jogos offline: guarda so o progresso dos jogos
+// cantinho-jogos://jogos/2048/index.html -> assets/cantinho-jogos/2048/index.html
+// (o "host" e sempre "jogos": um host so de numeros, como 2048, vira endereco IP no navegador)
+const ESQUEMA_JOGOS = "cantinho-jogos";
+const SITE_CANTINHO = /^https:\/\//i;
+const ehJogoLocal = (u) => String(u || "").startsWith(ESQUEMA_JOGOS + "://");
+// o esquema dos jogos precisa ser registrado ANTES do app ficar pronto
+require("electron").protocol.registerSchemesAsPrivileged([
+  { scheme: ESQUEMA_JOGOS, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+]);
+const TIPOS_ARQ = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif", ".ico": "image/x-icon", ".svg": "image/svg+xml",
+  ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".flac": "audio/flac", ".json": "application/json",
+  ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".eot": "application/vnd.ms-fontobject" };
+function registrarJogosLocais() {
+  const { session } = require("electron");
+  const raiz = path.join(__dirname, "..", "..", "assets", "cantinho-jogos");
+  session.fromPartition(PARTICAO_JOGOS).protocol.handle(ESQUEMA_JOGOS, async (req) => {
+    try {
+      const u = new URL(req.url);
+      const rel = decodeURIComponent(u.pathname).replace(/^\/+/, "").replace(/\/$/, "/index.html");
+      const arq = path.join(raiz, rel);
+      if (!dentroDe(arq, raiz)) return new Response("negado", { status: 403 });
+      const dados = await fs.promises.readFile(arq); // fs do Electron: le de dentro do app.asar
+      return new Response(dados, { headers: { "content-type": TIPOS_ARQ[path.extname(arq).toLowerCase()] || "application/octet-stream" } });
+    } catch { return new Response("nao achei", { status: 404 }); }
+  });
+}
+app.on("web-contents-created", (_e, wc) => {
+  if (wc.getType() !== "webview") return;
+  // link que abriria janela/aba nova: abre no proprio cantinho (janela nova seria visivel)
+  wc.setWindowOpenHandler(({ url }) => { if (SITE_CANTINHO.test(url)) setImmediate(() => { try { wc.loadURL(url); } catch {} }); return { action: "deny" }; });
+  wc.on("will-navigate", (ev, url) => { if (!SITE_CANTINHO.test(url) && !ehJogoLocal(url)) ev.preventDefault(); });
+  // Esc / Ctrl+Shift+Espaco com o foco DENTRO do video tambem escondem na hora
+  wc.on("before-input-event", (ev, input) => {
+    if (input.type !== "keyDown") return;
+    if (input.key === "Escape" || (input.control && input.shift && input.code === "Space")) {
+      ev.preventDefault();
+      if (win && !win.isDestroyed() && win.isFullScreen()) win.setFullScreen(false);
+      enviar("cantinho:panico");
+    }
+  });
+});
+ipcMain.handle("janela:sairTelaCheia", () => { if (win && !win.isDestroyed() && win.isFullScreen()) win.setFullScreen(false); return true; });
+
+// "canto de fuga": com o cantinho aberto, levar o mouse ate o canto escolhido da tela esconde tudo
+// (funciona mesmo com o mouse em cima do video, porque olha a posicao do cursor na tela)
+let _timerCanto = null, _cantoFuga = "off";
+function vigiarCanto(ligar, canto) {
+  clearInterval(_timerCanto); _timerCanto = null; _cantoFuga = canto || "off";
+  if (!ligar || _cantoFuga === "off") return;
+  const { screen } = require("electron");
+  _timerCanto = setInterval(() => {
+    try {
+      const p = screen.getCursorScreenPoint(), b = screen.getDisplayNearestPoint(p).bounds, m = 4;
+      const esq = p.x <= b.x + m, dir = p.x >= b.x + b.width - 1 - m, cima = p.y <= b.y + m, baixo = p.y >= b.y + b.height - 1 - m;
+      const ok = { "inf-esq": esq && baixo, "inf-dir": dir && baixo, "sup-esq": esq && cima, "sup-dir": dir && cima }[_cantoFuga];
+      if (ok) { if (win && !win.isDestroyed() && win.isFullScreen()) win.setFullScreen(false); enviar("cantinho:panico"); }
+    } catch {}
+  }, 120);
+}
+ipcMain.handle("cantinho:estado", (_e, { aberto, canto } = {}) => { vigiarCanto(!!aberto, canto); return true; });
+// apagar o progresso salvo dos jogos (o unico rastro que o cantinho deixa no PC)
+ipcMain.handle("cantinho:apagarJogos", async () => {
+  try { await require("electron").session.fromPartition(PARTICAO_JOGOS).clearStorageData(); return true; } catch { return false; }
+});
+
 app.whenReady().then(async () => {
   if (!temInstancia) return;
+  // o YouTube recusa/limita navegador com "Electron" no nome: usa o mesmo do Chrome
+  try {
+    const { session } = require("electron");
+    const s = session.fromPartition(PARTICAO_CANTINHO);
+    s.setUserAgent(s.getUserAgent().replace(/\s*Electron\/\S+/i, "").replace(/\s*(digitalizador|DigiDoc)\/\S+/gi, ""));
+    s.setPermissionRequestHandler((_wc, perm, ok) => ok(perm === "fullscreen")); // nada de camera/microfone/localizacao
+    require("electron").session.fromPartition(PARTICAO_JOGOS).setPermissionRequestHandler((_wc, perm, ok) => ok(perm === "fullscreen"));
+    registrarJogosLocais();
+  } catch {}
   if (PEDIU_DESINSTALAR) {
     // so a pergunta de desinstalar, sem abrir o app
     let ok = false;

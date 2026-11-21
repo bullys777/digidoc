@@ -1,0 +1,30 @@
+/* Cantinho (area escondida). Usa as mesmas cores do app: de longe parece o DigiDoc. */
+.cantinho { position: fixed; inset: 0; z-index: 84; background: var(--bg); color: var(--texto); display: flex; flex-direction: column; }
+.ct-barra { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--borda); }
+.ct-marca { font-weight: 800; color: var(--acento); margin-right: 6px; white-space: nowrap; }
+.ct-btn { border: 1px solid var(--borda); background: var(--surface); color: var(--texto); padding: 6px 10px; border-radius: 8px; font-weight: 600; font-size: 13px; white-space: nowrap; }
+.ct-btn:hover { background: var(--surface-2); }
+.ct-esconder { border-color: var(--acento); color: var(--acento); }
+.ct-endereco { flex: 1; min-width: 120px; border: 1px solid var(--borda); background: var(--bg); color: var(--texto); padding: 7px 10px; border-radius: 8px; font-size: 13px; }
+.ct-endereco:focus { outline: 2px solid var(--acento); border-color: var(--acento); }
+.ct-corpo { flex: 1; position: relative; min-height: 0; }
+.ct-inicio { position: absolute; inset: 0; overflow-y: auto; padding: 18px 22px 30px; }
+.ct-telas { position: absolute; inset: 0; }
+.ct-wv { position: absolute; inset: 0; width: 100%; height: 100%; background: #fff; }
+.ct-wv.oculto { display: flex !important; visibility: hidden; pointer-events: none; } /* escondido mas vivo (continua de onde parou) */
+.ct-dica { background: color-mix(in srgb, var(--acento) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--acento) 30%, transparent); border-radius: 10px; padding: 10px 14px; font-size: 13px; line-height: 1.6; margin-bottom: 6px; }
+.ct-grupo { font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--texto-fraco); margin: 18px 0 8px; }
+.ct-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.ct-card { position: relative; display: flex; align-items: center; gap: 12px; text-align: left; border: 1px solid var(--borda); background: var(--surface); color: var(--texto); border-radius: 12px; padding: 12px 14px; }
+.ct-card:hover { border-color: var(--acento); box-shadow: var(--sombra); }
+.ct-ic { font-size: 26px; width: 34px; text-align: center; }
+.ct-card b { display: block; font-size: 14px; }
+.ct-card small { display: block; font-size: 12px; color: var(--texto-fraco); line-height: 1.35; }
+.ct-aberto { position: absolute; top: 8px; right: 10px; color: var(--verde); font-size: 11px; }
+.ct-rodape { margin-top: 22px; font-size: 12px; color: var(--texto-fraco); }
+.ct-config { position: absolute; top: 10px; right: 12px; width: 460px; max-width: calc(100% - 24px); z-index: 2; background: var(--surface); border: 1px solid var(--borda); border-radius: 12px; box-shadow: 0 10px 34px rgba(0,0,0,.22); padding: 14px 16px; }
+.ct-config h3 { margin: 0 0 10px; font-size: 15px; }
+.ct-op { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin-bottom: 10px; }
+.ct-op:has(input[type=checkbox]) { flex-direction: row; align-items: flex-start; gap: 8px; }
+.ct-op select { border: 1px solid var(--borda); background: var(--bg); color: var(--texto); padding: 6px 8px; border-radius: 7px; font-size: 13px; }
+.ct-sub { font-size: 12px; color: var(--texto-fraco); line-height: 1.5; margin: 8px 0 0; }
