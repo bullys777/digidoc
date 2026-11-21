@@ -104,6 +104,14 @@ const api = {
   cantinhoEstado: (st) => ipcRenderer.invoke("cantinho:estado", st),
   cantinhoApagarJogos: () => ipcRenderer.invoke("cantinho:apagarJogos"),
 
+  // lista de conferencia
+  conferenciaInfo: () => ipcRenderer.invoke("conferencia:info"),
+  conferenciaEscolherPasta: (sugerida) => ipcRenderer.invoke("conferencia:escolherPasta", sugerida),
+  conferenciaAbrir: (pasta) => ipcRenderer.invoke("conferencia:abrir", pasta),
+  conferenciaEscanear: () => ipcRenderer.invoke("conferencia:escanear"),
+  conferenciaImportar: (achados, pasta) => ipcRenderer.invoke("conferencia:importar", { achados, pasta }),
+  onAviso: (cb) => ipcRenderer.on("aviso", (_e, t) => cb(t)),
+
   // eventos
   onProgresso: (cb) => ipcRenderer.on("progresso", (_e, d) => cb(d)),
   onScannerMudou: (cb) => ipcRenderer.on("scanner:mudou", (_e, d) => cb(d)),

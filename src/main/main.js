@@ -7,6 +7,7 @@ const config = require("./config");
 const files = require("./files");
 const scanner = require("./scanner");
 const estatisticas = require("./estatisticas");
+const conferencia = require("./conferencia");
 const atualizar = require("./atualizar");
 
 // ---- modulos pesados (sharp, pdf-lib, tesseract, qrcode) so carregam quando usados:
@@ -776,6 +777,7 @@ function registrarHistorico(associado, modoSalvo, r) {
     const arquivos = (r.salvos || []).filter((s) => s.caminho && !s.erro && !s.cancelado)
       .map((s) => ({ nome: s.nome, caminho: s.caminho, bytes: s.bytes || 0, paginas: s.paginas || 0 }));
     if (!arquivos.length) return;
+    anotarNaConferencia(associado);
     const h = lerHistorico();
     h.unshift({ quando: new Date().toISOString(), associado: String(associado || "").trim(), modo: modoSalvo, pasta: r.pasta || "", arquivos });
     fs.mkdirSync(path.dirname(HISTORICO), { recursive: true });
@@ -783,6 +785,61 @@ function registrarHistorico(associado, modoSalvo, r) {
     enviar("historico:mudou", resumoHoje(h));
   } catch {}
 }
+
+// ---- lista de conferencia (so nomes/codigos de quem foi digitalizado, num TXT organizado por data) ----
+const pastaConferencia = () => (cfg.conferencia && cfg.conferencia.pasta) || path.join(app.getPath("documents"), "DigiDoc - Conferencia");
+function anotarNaConferencia(associado) {
+  if (cfg.conferencia && cfg.conferencia.ativo === false) return;
+  try { conferencia.registrar(pastaConferencia(), associado); }
+  catch (e) { enviar("aviso", `Não consegui anotar na lista de conferência (${e.message}). A pasta da lista está acessível?`); }
+}
+ipcMain.handle("conferencia:info", () => {
+  try { return Object.assign(conferencia.resumo(pastaConferencia()), { ativo: !(cfg.conferencia && cfg.conferencia.ativo === false), nuvens: conferencia.nuvens(), padrao: path.join(app.getPath("documents"), "DigiDoc - Conferencia") }); }
+  catch (e) { return { erro: e.message, nuvens: [] }; }
+});
+// trocar a pasta da lista: leva junto a lista que ja existe (se a pasta nova ainda nao tem uma)
+function levarLista(de, para) {
+  try {
+    if (!de || !para || path.resolve(de) === path.resolve(para)) return;
+    fs.mkdirSync(para, { recursive: true });
+    for (const n of [conferencia.NOME_TXT, conferencia.NOME_TXT.replace(".txt", " (dados).json")]) {
+      const a = path.join(de, n), b = path.join(para, n);
+      if (fs.existsSync(a) && !fs.existsSync(b)) fs.copyFileSync(a, b);
+    }
+  } catch {}
+}
+ipcMain.handle("conferencia:escolherPasta", async (_e, sugerida) => {
+  let destino = sugerida;
+  if (!destino) {
+    const r = await dialog.showOpenDialog(win, { title: "Pasta da lista de conferência", properties: ["openDirectory", "createDirectory"] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    destino = r.filePaths[0];
+  }
+  levarLista(pastaConferencia(), destino);
+  return destino;
+});
+ipcMain.handle("conferencia:abrir", (_e, pasta) => {
+  try {
+    const p = pasta || pastaConferencia();
+    const txt = path.join(p, conferencia.NOME_TXT);
+    if (!fs.existsSync(txt)) conferencia.importar(p, []); // cria a lista (vazia) pra abrir
+    shell.openPath(txt);
+    return true;
+  } catch (e) { return false; }
+});
+// escolher pastas ja digitalizadas (a principal ou as de letra) e ver o que vai entrar
+ipcMain.handle("conferencia:escanear", async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: "Escolha a pasta dos digitalizados (a principal ou as das letras, ex.: Digitalizados A)",
+    defaultPath: cfgSaida().pastaSaida, properties: ["openDirectory", "multiSelections"],
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  return { pastas: r.filePaths, achados: conferencia.escanear(r.filePaths) };
+});
+ipcMain.handle("conferencia:importar", (_e, { achados, pasta } = {}) => {
+  try { return Object.assign(conferencia.importar(pasta || pastaConferencia(), achados || []), { ok: true }); }
+  catch (e) { return { ok: false, msg: e.message }; }
+});
 function resumoHoje(h) {
   const hoje = new Date().toDateString();
   const doDia = h.filter((e) => new Date(e.quando).toDateString() === hoje);

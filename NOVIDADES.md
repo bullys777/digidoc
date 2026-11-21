@@ -3,6 +3,13 @@
 Cada versão nova começa com `## <versão>`. As linhas com `-` viram a lista de
 novidades que aparece no aviso de atualização dentro do app.
 
+## 0.6.0
+- Lista de conferência: cada associado salvo é anotado num arquivo TXT organizado por data (com hora, código se tiver, e índice de A a Z) — só nomes, nenhum documento
+- A pasta da lista é você que escolhe: numa pasta do OneDrive ou Google Drive ela vai pra nuvem e fica privada na sua conta
+- Importar pastas já digitalizadas: escolha a pasta principal ou as das letras (ex.: Digitalizados A) e o DigiDoc anota cada associado com o dia em que a pasta foi criada (sem repetir)
+- O código do associado é reconhecido no nome (ex.: "1234 - Maria Silva")
+- Botão "Lista de conferência" no Histórico
+
 ## 0.5.0
 - Reconhecer o tipo do documento sozinho (opcional): no modo documento por documento, o DigiDoc lê o texto da página e já marca RG, CNH, CPF, comprovante de endereço, certidões, ficha, proposta, holerite, título de eleitor, carteira de trabalho e foto 3x4
 - Configurações > Reconhecimento: escolha o nome do arquivo de cada documento reconhecido (ex.: comprovante de endereço → ENDERECO, proposta de admissão → PROPOSTA)

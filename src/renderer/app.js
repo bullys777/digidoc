@@ -1274,9 +1274,11 @@ function aoReceberFotoCelular(reg) {
 }
 
 // ---------------- configuracoes ----------------
-let familiasDoc = []; // documentos que o reconhecimento sabe identificar (vem do main)
+let familiasDoc = [];
+let confInfo = null; // lista de conferencia (pasta, total, pastas de nuvem deste PC) // documentos que o reconhecimento sabe identificar (vem do main)
 async function abrirConfig() {
   try { familiasDoc = await window.api.familiasDocumento(); } catch { familiasDoc = []; }
+  try { confInfo = await window.api.conferenciaInfo(); } catch { confInfo = null; }
   $("#configCorpo").innerHTML = montarFormConfig(cfg);
   $("#modalConfig").classList.remove("oculto");
   bindConfigDinamico();
@@ -1325,6 +1327,21 @@ function montarFormConfig(c) {
     <div class="cfg-linha"><label class="rot">Meta de associados por dia<span class="sub">aparece embaixo, com a barrinha de progresso (0 = sem meta)</span></label>
       <input type="number" id="cfgMetaDia" min="0" max="999" value="${Number(c.metaDia) || 0}"></div>
     ${linhaSw("cfgProximo", "Depois de salvar, limpar o nome", "o campo Associado fica vazio e com o cursor, pronto pro próximo", c.aposSalvar.proximoAssociado !== false)}
+  </div>
+
+  <div class="cfg-grupo" id="gConferencia">
+    <h3>Lista de conferência</h3>
+    ${linhaSw("cfgConfAtivo", "Anotar cada associado salvo na lista", "um arquivo TXT organizado por data com o nome (e o código, se tiver) de quem já passou pela digitalização. Só nomes — nenhum documento vai pra lista.", !(c.conferencia && c.conferencia.ativo === false))}
+    <div class="cfg-linha"><label class="rot">Pasta da lista<span class="sub" id="cfgConfPastaTxt">${esc((c.conferencia && c.conferencia.pasta) || (confInfo && confInfo.padrao) || "")}</span></label>
+      <button class="btn-sec" id="btnConfPasta">Mudar…</button></div>
+    ${confInfo && confInfo.nuvens && confInfo.nuvens.length ? `<div class="cfg-linha conf-nuvens"><label class="rot">Guardar na nuvem<span class="sub">usa a pasta do serviço que já sincroniza neste PC: a lista fica <b>privada</b> na sua conta (ninguém vê, a não ser que você compartilhe)</span></label>
+      ${confInfo.nuvens.map((nv, i) => `<button class="btn-sec" data-nuvem="${i}">☁ ${esc(nv.nome)}</button>`).join("")}</div>` :
+      `<p class="sub" style="margin:-2px 0 8px">Pra guardar na nuvem: instale o OneDrive ou o Google Drive para computador e escolha uma pasta dele em "Mudar…" — a lista sincroniza sozinha e fica privada na sua conta.</p>`}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn-sec" id="btnConfAbrir">📄 Abrir a lista</button>
+      <button class="btn-sec" id="btnConfImportar">📥 Importar pastas já digitalizadas…</button>
+      <span class="sub">${confInfo && confInfo.total ? `${confInfo.total.toLocaleString("pt-BR")} associado(s) na lista` : "lista ainda vazia"}</span>
+    </div>
   </div>
 
   <div class="cfg-grupo" id="gReconhecer">
@@ -1453,6 +1470,7 @@ function nivelOpts(v) {
 }
 
 let _pastaEscolhida = null;
+let _confPastaEscolhida = null; // pasta nova da lista de conferencia (vale ao salvar as configuracoes)
 let _backupEscolhido = null;
 
 function teclasUsadasNaTabela() {
@@ -1480,7 +1498,15 @@ function addLinhaTipo(t) {
 }
 
 function bindConfigDinamico() {
-  _pastaEscolhida = null; _backupEscolhido = null;
+  _pastaEscolhida = null; _backupEscolhido = null; _confPastaEscolhida = null;
+  const usarPastaConf = async (sugerida) => {
+    const p = await window.api.conferenciaEscolherPasta(sugerida || null);
+    if (p) { _confPastaEscolhida = p; $("#cfgConfPastaTxt").textContent = p + "  (vale ao salvar)"; }
+  };
+  $("#btnConfPasta").onclick = () => usarPastaConf();
+  $$("[data-nuvem]").forEach((b) => { b.onclick = () => usarPastaConf(confInfo.nuvens[+b.dataset.nuvem].pasta); });
+  $("#btnConfAbrir").onclick = () => window.api.conferenciaAbrir(_confPastaEscolhida || null);
+  $("#btnConfImportar").onclick = () => { if (window.Conferencia) window.Conferencia.importar(_confPastaEscolhida || null); };
   $("#btnEscolherPasta").onclick = async () => {
     const p = await window.api.escolherPastaSaida();
     if (p) { _pastaEscolhida = p; $("#cfgPastaTxt").textContent = p; }
@@ -1617,6 +1643,7 @@ function coletarConfig() {
   c.aposSalvar.limparPaginas = $("#cfgLimpar").checked;
   c.aposSalvar.proximoAssociado = $("#cfgProximo").checked;
   c.reconhecerTipo = $("#cfgReconhecer").checked;
+  c.conferencia = { ativo: $("#cfgConfAtivo").checked, pasta: _confPastaEscolhida !== null ? _confPastaEscolhida : ((cfg.conferencia && cfg.conferencia.pasta) || "") };
   // Reconhecimento: ligado/desligado e o "salvar como" de cada documento
   c.reconhecimento = {};
   $$("#recBody tr").forEach((tr) => {

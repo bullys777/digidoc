@@ -90,6 +90,21 @@ NOME DO ASSOCIADO
 - Depois de salvar, o campo fica limpo, pronto pro proximo.
 
 
+LISTA DE CONFERENCIA (quem ja passou pela digitalizacao)
+---------------------------------------------------------
+- Cada associado salvo e anotado no arquivo
+  "DigiDoc - Lista de conferencia.txt": por data, com hora, codigo (se
+  tiver, ex.: "1234 - Maria Silva") e um indice de A a Z no final.
+- SO nomes e codigos. Nenhum documento vai pra lista.
+- Configuracoes > Lista de conferencia:
+  * Pasta da lista: escolha onde fica. Numa pasta do OneDrive ou do
+    Google Drive ela vai pra nuvem sozinha e fica PRIVADA na sua conta.
+  * Importar pastas ja digitalizadas: escolha a pasta principal ou as
+    das letras (ex.: Digitalizados A). O DigiDoc anota cada associado
+    com o dia em que a pasta dele foi criada. Nao repete quem ja esta.
+- Atalho: Historico (🕘) > Lista de conferencia.
+
+
 RECONHECER O TIPO SOZINHO (opcional)
 ------------------------------------
 - Liga em Configuracoes > Reconhecimento, ou no "sozinho" do painel

@@ -32,3 +32,6 @@ naps2/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# lista de conferencia (nomes de associados) — nunca vai pro GitHub
+*Lista de conferencia*

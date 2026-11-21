@@ -1,7 +1,7 @@
 {
   "name": "digitalizador",
   "productName": "DigiDoc",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "DigiDoc - digitalizador de documentos em lote",
   "main": "src/main/main.js",
   "scripts": {

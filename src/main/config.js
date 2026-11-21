@@ -102,6 +102,8 @@ const PADRAO = {
   // ----- producao -----
   metaDia: 0,              // meta de associados por dia (0 = sem meta); barrinha no rodape
   reconhecerTipo: false,   // le o texto da pagina e ja marca o tipo (RG, CPF...) no modo documento por documento
+  // lista de conferencia: anota o nome (e codigo) de cada associado salvo num TXT por data
+  conferencia: { ativo: true, pasta: "" }, // pasta vazia = Documentos / "DigiDoc - Conferencia"
   reconhecimento: {},      // por documento reconhecido: { ativo, nome } — nome = "salvar como" (ex.: residencia -> ENDERECO)
 
   // ----- atualizacao automatica (GitHub) -----

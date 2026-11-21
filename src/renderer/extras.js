@@ -572,7 +572,8 @@ window.Painel = (() => {
 // =====================================================================
 async function abrirHistorico() {
   const J = abrirJanela({ titulo: "🕘 Histórico — salvos neste PC", largura: 720, corpo: `<div class="painel-carregando"><div class="spinner"></div></div>`,
-    rodape: `<button class="mini perigo" id="hiLimpar">Limpar histórico</button><span class="flex1"></span><button class="btn-sec" id="hiPainel">📊 Painel de produção</button>` });
+    rodape: `<button class="mini perigo" id="hiLimpar">Limpar histórico</button><span class="flex1"></span><button class="btn-sec" id="hiConferencia" title="Lista com o nome de todos que já passaram pela digitalização">📄 Lista de conferência</button><button class="btn-sec" id="hiPainel">📊 Painel de produção</button>` });
+  J.q("#hiConferencia").onclick = () => window.api.conferenciaAbrir();
   async function desenhar() {
     const h = await window.api.historico();
     if (!J.ov.isConnected) return;
@@ -821,6 +822,41 @@ window.Fila = (() => {
 // =====================================================================
 // liga tudo
 // =====================================================================
+// =====================================================================
+// LISTA DE CONFERENCIA: importar pastas ja digitalizadas (nome da pasta + dia em que foi criada)
+// =====================================================================
+window.Conferencia = (() => {
+  async function importar(pasta) {
+    const r = await window.api.conferenciaEscanear();
+    if (!r) return; // cancelou a escolha
+    const achados = r.achados || [];
+    const pastas = r.pastas.map((p) => p.split(/[\\/]/).pop());
+    const max = 400;
+    const J = abrirJanela({ titulo: "📥 Importar pra lista de conferência", largura: 720,
+      corpo: achados.length ? `
+        <p style="margin-top:0">Encontrei <b>${fmtNum(achados.length)} associado(s)</b> em ${esc(pastas.join(", "))} — pastas criadas de <b>${dataCurta(achados[0].data)}/${achados[0].data.slice(0, 4)}</b> a <b>${dataCurta(achados[achados.length - 1].data)}/${achados[achados.length - 1].data.slice(0, 4)}</b>.</p>
+        <p class="sub">Vai pra lista só o <b>nome</b> (e o código, se tiver) e o <b>dia em que a pasta foi criada</b>. Quem já está na lista não entra de novo.</p>
+        <div class="pn-lista" style="max-height:340px"><table class="pn-tabela"><thead><tr><th>Dia</th><th>Associado</th><th>Código</th><th>Pasta</th></tr></thead><tbody>
+          ${achados.slice(0, max).map((a) => `<tr><td class="sub">${dataCurta(a.data)}/${a.data.slice(0, 4)}</td><td><b>${esc(a.nome)}</b></td><td>${esc(a.codigo || "")}</td><td class="sub">${esc(a.pasta.split(/[\\/]/).slice(-2, -1)[0] || "")}</td></tr>`).join("")}
+        </tbody></table></div>
+        ${achados.length > max ? `<p class="sub">Mostrando ${max} de ${fmtNum(achados.length)} — todos vão ser importados.</p>` : ""}`
+        : `<p style="margin-top:0">Não achei pastas de associados em ${esc(pastas.join(", "))}.</p><p class="sub">Escolha a pasta principal dos digitalizados ou as pastas das letras (ex.: "Digitalizados A") — dentro delas ficam as pastas com o nome de cada associado.</p>`,
+      rodape: `<span class="flex1"></span><button class="btn-sec" data-cancelar>${achados.length ? "Cancelar" : "Fechar"}</button>${achados.length ? `<button class="btn-salvar" id="cfImportar">Importar ${fmtNum(achados.length)}</button>` : ""}` });
+    J.q("[data-cancelar]").onclick = J.fechar;
+    const b = J.q("#cfImportar");
+    if (b) b.onclick = async () => {
+      b.disabled = true; b.textContent = "Importando…";
+      const res = await window.api.conferenciaImportar(achados, pasta || null);
+      J.fechar();
+      if (res && res.ok) {
+        toast(`📄 <b>Lista de conferência:</b> ${fmtNum(res.novos)} associado(s) adicionado(s)${res.jaTinha ? `, ${fmtNum(res.jaTinha)} já estavam` : ""}. Total: ${fmtNum(res.total)}.`, "ok", 9000);
+        setStatus(`Lista de conferência: +${res.novos} (total ${res.total}).`, "ok");
+      } else setStatus("Não consegui importar: " + ((res && res.msg) || "erro"), "erro");
+    };
+  }
+  return { importar };
+})();
+
 window.Extras = { atalhos: abrirAtalhos, historico: abrirHistorico };
 (function ligarExtras() {
   window.Visor.ligar();
@@ -831,6 +867,7 @@ window.Extras = { atalhos: abrirAtalhos, historico: abrirHistorico };
   document.getElementById("btnAtalhos").onclick = abrirAtalhos;
   document.getElementById("contadorHoje").onclick = () => window.Painel.abrir();
   window.api.onHistorico(() => window.Painel.atualizarContador());
+  window.api.onAviso((t) => toast("⚠ " + esc(t), "aviso", 10000)); // avisos do processo principal (ex.: lista de conferencia)
   // o contador e a busca de atualizacao esperam a config carregar (init do app.js e assincrono)
   const esperarCfg = setInterval(() => {
     if (!cfg) return;
