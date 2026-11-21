@@ -79,7 +79,32 @@ ARRUMAR AS PAGINAS
   * Juntar as marcadas numa folha (ex.: RG frente e verso numa A4).
 
 
-FILA DE ASSOCIADOS (botao 📋 Fila)
+NOME DO ASSOCIADO
+-----------------
+- 📋 Colar: cola o nome que voce copiou (de uma planilha, e-mail...).
+- 🕘 Recentes: lista quem foi salvo neste PC.
+  * 1 clique = poe o nome no campo.
+  * 2 cliques = REABRE os documentos salvos na tela pra editar
+    (girar, tirar/por pagina). Ao salvar, grava por cima dos mesmos
+    arquivos (aparece "Editando" em amarelo; da pra sair da edicao).
+- Depois de salvar, o campo fica limpo, pronto pro proximo.
+
+
+RECONHECER O TIPO SOZINHO (opcional)
+------------------------------------
+- Liga em Configuracoes > Reconhecimento, ou no "sozinho" do painel
+  de tipos (modo DOCUMENTO POR DOCUMENTO).
+- O DigiDoc le o texto da pagina e ja marca o tipo (✨ na etiqueta):
+  RG, CNH, CPF, comprovante de endereco, certidoes, ficha, proposta,
+  holerite, titulo de eleitor, carteira de trabalho, foto 3x4.
+- Errou? Clique na etiqueta da pagina e escolha o certo. Ele aprende.
+- "Salvar como": em Configuracoes > Reconhecimento voce escolhe o nome
+  do arquivo de cada um (ex.: comprovante de endereco -> ENDERECO).
+- Le tambem o NOME escrito no RG/CNH/CPF e sugere pro campo Associado.
+- Pagina que ficar sem tipo NAO e salva e continua na tela.
+
+
+FILA DE ASSOCIADOS (botao 👥 Fila)
 ----------------------------------
 - Cole a lista de nomes (ou importe um .txt/.csv do Excel).
 - Depois de salvar, o DigiDoc marca o nome como feito e ja poe o

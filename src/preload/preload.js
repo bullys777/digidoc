@@ -8,7 +8,7 @@ const api = {
   // config
   getConfig: () => ipcRenderer.invoke("config:get"),
   saveConfig: (c) => ipcRenderer.invoke("config:save", c),
-  resetConfig: () => ipcRenderer.invoke("config:reset"),
+  configPadrao: () => ipcRenderer.invoke("config:padrao"),
   configPath: () => ipcRenderer.invoke("config:path"),
   statusPasta: () => ipcRenderer.invoke("pasta:status"),
 
@@ -31,7 +31,14 @@ const api = {
   restaurarPaginas: (ids) => ipcRenderer.invoke("paginas:restaurar", ids),
   purgarLixeira: (ids) => ipcRenderer.invoke("lixeira:purgar", ids),
   limparPaginas: () => ipcRenderer.invoke("paginas:limpar"),
+  descartarPaginas: (ids) => ipcRenderer.invoke("paginas:descartar", ids),
   confirmarLado: (ids) => ipcRenderer.invoke("pagina:confirmarLado", ids),
+  classificarPagina: (id) => ipcRenderer.invoke("pagina:classificar", { id }),
+  aprenderTipo: (id, sigla) => ipcRenderer.invoke("tipo:aprender", { id, sigla }),
+  esquecerTipos: () => ipcRenderer.invoke("tipo:esquecer"),
+  familiasDocumento: (args) => ipcRenderer.invoke("reconhecimento:familias", args || {}),
+  clipboardTexto: () => ipcRenderer.invoke("clipboard:texto"),
+  clipboardCopiar: (t) => ipcRenderer.invoke("clipboard:copiar", t),
   juntarPaginas: (ids) => ipcRenderer.invoke("paginas:juntar", { ids }),
 
   // fila de associados

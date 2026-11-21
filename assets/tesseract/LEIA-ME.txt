@@ -1,0 +1,2 @@
+osd.traineddata e por.traineddata: Tesseract OCR (tessdata / tessdata_fast), licenca Apache-2.0
+https://github.com/tesseract-ocr/tessdata_fast

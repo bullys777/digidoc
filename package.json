@@ -1,7 +1,7 @@
 {
   "name": "digitalizador",
   "productName": "DigiDoc",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "DigiDoc - digitalizador de documentos em lote",
   "main": "src/main/main.js",
   "scripts": {
@@ -38,7 +38,6 @@
       "src/**/*",
       "assets/**/*",
       "!**/node_modules/tesseract.js-core/*-lstm.wasm",
-      "!**/node_modules/tesseract.js-core/*-lstm.wasm.js",
       "!**/node_modules/onnxruntime-node/bin/napi-v*/linux/**",
       "!**/node_modules/onnxruntime-node/bin/napi-v*/darwin/**",
       "!**/node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**",

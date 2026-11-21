@@ -196,14 +196,14 @@ async function processarPagina(entrada, opcoes = {}) {
       const branco = percentil(g, 98);
       if (branco > 140 && branco < 250) proc = proc.linear(255 / branco, 0);
     } else {
-      const preto = percentil(g, 2);
-      const branco = percentil(g, 80);
+      // mapeia [preto..branco] -> [0..255]. O "preto" nunca passa de 90: numa pagina quase branca com
+      // um cartao (RG no vidro) o percentil 2 caia no cinza do cartao e o cartao inteiro ficava PRETO.
+      // E o contraste no maximo dobra (cinza claro nunca vira preto).
+      const preto = Math.min(percentil(g, 2), 90);
+      const branco = Math.max(percentil(g, 80), 150);
       if (branco - preto > 40) {
-        // mapeia [preto..branco] -> [0..255]
-        const mult = 255 / (branco - preto);
-        proc = proc.linear(mult, -preto * mult);
-      } else {
-        proc = proc.normalise();
+        const mult = Math.min(255 / (branco - preto), 2.2);
+        proc = proc.linear(mult, 255 - branco * mult); // o branco do papel vai pra 255
       }
     }
   }

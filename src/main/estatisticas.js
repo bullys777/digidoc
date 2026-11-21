@@ -16,6 +16,8 @@ const diaLocal = (ms) => {
 };
 // "RG_2.pdf" -> "RG" (o _2 e so o numero de quando ja existia)
 const siglaDoArquivo = (f) => f.replace(/\.pdf$/i, "").replace(/_\d+$/, "").toUpperCase();
+// a sigla do tipo como ela vira nome de arquivo (sem acento, espaco vira _) — pra comparar com o arquivo
+const siglaArquivo = (s) => files.sanitizaBase(String(s || ""), { removerAcentosArquivo: true, maiusculasNomeArquivo: true });
 
 async function lerDir(d) {
   try { return await fs.promises.readdir(d, { withFileTypes: true }); } catch { return []; }
@@ -86,10 +88,10 @@ async function calcular(cfg) {
   const comDocs = pessoas.filter((p) => p.docs.length).length;
   // quantas pessoas tem cada tipo configurado (cobertura / o que falta)
   const cobertura = (cfg.tipos || []).map((t) => {
-    const s = String(t.sigla || "").toUpperCase();
+    const s = siglaArquivo(t.sigla);
     return { sigla: s, nome: t.nome, tem: pessoas.filter((p) => p.siglas.includes(s)).length };
   });
-  const dossie = String(cfg.siglaDossie || "DOSSIE").toUpperCase();
+  const dossie = siglaArquivo(cfg.siglaDossie || "DOSSIE");
 
   cache = {
     em: Date.now(), levouMs: Date.now() - inicio, pasta: cfg.pastaSaida,

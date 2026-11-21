@@ -13,7 +13,7 @@ let appVersao = "";
 // pagina da tela a partir do que o main devolve
 function novaPagina(r) {
   return { id: r.id, thumb: r.thumb, giro: r.giro, w: r.w, h: r.h, tipo: null, colorido: !!r.colorido, recortada: !!r.recortada,
-    incerto: !!r.incerto, digital: r.digital || "", repetidaDe: null };
+    incerto: !!r.incerto, digital: r.digital || "", repetidaDe: null, tipoAuto: false, lendo: false };
 }
 // atualiza a pagina da tela com o resultado de girar/recortar/cor
 function atualizarPagina(r) {
@@ -83,6 +83,8 @@ function conferirNovasPaginas(novas) {
   if (avisos.length) partes.push(`<b>≈ Página repetida?</b> ${avisos.slice(0, 3).join("; ")}${avisos.length > 3 ? "…" : ""}. Confira e apague a que sobrou.`);
   if (incertas.length) partes.push(`<b>↻? Não tive certeza do lado</b> da${incertas.length > 1 ? "s" : ""} página${incertas.length > 1 ? "s" : ""} ${incertas.slice(0, 6).join(", ")}${incertas.length > 6 ? "…" : ""}. Confira (R gira).`);
   if (partes.length) toast(partes.join("<br>"));
+  // reconhecer o tipo sozinho (se ligado, no modo documento por documento)
+  if (window.Assistente) window.Assistente.paginasNovas(novas);
 }
 
 // ---------------- desfazer (Ctrl+Z) ----------------
@@ -127,9 +129,14 @@ async function desfazer() {
     if (window.Visor) window.Visor.atualizar();
   }
 }
-// guarda a ordem/tipos atuais pra voltar depois (acoes que so mexem na tela)
-function fotoDaTela() {
-  return { ordem: paginas.map((p) => p.id), tipos: new Map(paginas.map((p) => [p.id, p.tipo])) };
+// guarda a ordem (e os tipos, se comTipos) atuais pra voltar depois (acoes que so mexem na tela).
+// Acao que so muda a ORDEM nao guarda os tipos: desfazer ela nao pode apagar os tipos que o
+// reconhecimento marcou depois
+function fotoDaTela(comTipos = true) {
+  return {
+    ordem: paginas.map((p) => p.id),
+    tipos: comTipos ? new Map(paginas.map((p) => [p.id, { tipo: p.tipo, auto: !!p.tipoAuto }])) : null,
+  };
 }
 function voltarFoto(f) {
   const porId = new Map(paginas.map((p) => [p.id, p]));
@@ -137,7 +144,7 @@ function voltarFoto(f) {
   // paginas que entraram depois (nao estavam na foto) vao pro fim, na ordem que estavam
   for (const p of paginas) if (!f.ordem.includes(p.id)) reordenadas.push(p);
   paginas = reordenadas;
-  for (const p of paginas) if (f.tipos.has(p.id)) p.tipo = f.tipos.get(p.id);
+  if (f.tipos) for (const p of paginas) if (f.tipos.has(p.id)) { const t = f.tipos.get(p.id); p.tipo = t.tipo; p.tipoAuto = t.auto; }
 }
 
 const CORES_TIPO = ["#2f6feb", "#1f9d57", "#b7791f", "#8b5cf6", "#e05a8a", "#0ea5a3", "#d1352c", "#5a6572"];
@@ -284,6 +291,10 @@ function nomesParecidos(nome) {
 let docsAssoc = []; // PDFs ja salvos do associado atual (pra marcar os tipos)
 async function onAssociadoMudou() {
   const nome = $("#inpAssociado").value.trim();
+  // o botao Salvar depende do nome: digitar/colar o nome DEPOIS de escanear deixava ele desativado
+  // (bug antigo — so voltava ao clicar numa pagina)
+  atualizarSalvar();
+  if (window.Assistente) window.Assistente.nomeMudou(nome);
   const letra = nome ? primeiraLetra(nome) : "?";
   $("#letraBadge").textContent = letra;
   const cont = $("#assocDocs");
@@ -311,9 +322,16 @@ async function onAssociadoMudou() {
 }
 
 // um tipo ja foi salvo pra este associado?
+// a sigla como ela vira nome de arquivo (igual ao files.js: sem acento, espaco vira _, maiuscula).
+// Comparar a sigla "crua" com o nome do arquivo falhava em sigla com acento ou espaco
+function siglaArquivo(s) {
+  return String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
+    .replace(/\s+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").toUpperCase();
+}
+const siglaDoNomeArquivo = (f) => String(f || "").toUpperCase().replace(/\.PDF$/, "").replace(/_\d+$/, "");
 function tipoJaSalvo(sigla) {
-  const alvo = sigla.toUpperCase();
-  return docsAssoc.some((f) => f.toUpperCase().replace(/\.PDF$/, "").replace(/_\d+$/, "") === alvo);
+  const alvo = siglaArquivo(sigla);
+  return docsAssoc.some((f) => siglaDoNomeArquivo(f) === alvo);
 }
 
 function primeiraLetra(nome) {
@@ -323,6 +341,8 @@ function primeiraLetra(nome) {
 
 // ---------------- tipos de documento ----------------
 function renderTipos() {
+  const ck = $("#chkReconhecer");
+  if (ck) ck.checked = !!cfg.reconhecerTipo;
   const cont = $("#botoesTipos");
   cont.innerHTML = "";
   cfg.tipos.forEach((t, i) => {
@@ -363,9 +383,14 @@ function renderGrade() {
     const d = document.createElement("div");
     d.className = "pag" + (sel.has(p.id) ? " sel" : "");
     d.dataset.id = p.id;
+    // etiqueta do tipo: clicar abre a lista pra trocar (✨ = o DigiDoc reconheceu sozinho)
     let tipoTag = "";
-    if (modo === "documentos" && p.tipo) {
-      tipoTag = `<div class="pag-tipo" style="background:${corDoTipo(p.tipo)}">${esc(nomeDoTipo(p.tipo))}</div>`;
+    if (modo === "documentos" && p.lendo) {
+      tipoTag = `<div class="pag-tipo lendo">🔎 lendo…</div>`;
+    } else if (modo === "documentos" && p.tipo) {
+      tipoTag = `<div class="pag-tipo clicavel" style="background:${corDoTipo(p.tipo)}" title="${p.tipoAuto ? "Reconhecido sozinho" + (p.motivoAuto ? " (" + esc(p.motivoAuto) + ")" : "") + " — clique pra trocar" : "Clique pra trocar o tipo"}">${p.tipoAuto ? "✨ " : ""}${esc(nomeDoTipo(p.tipo))} ▾</div>`;
+    } else if (modo === "documentos") {
+      tipoTag = `<div class="pag-tipo clicavel sem-tipo" title="Clique pra escolher o tipo">＋ tipo ▾</div>`;
     }
     const igual = p.repetidaDe ? paginas.findIndex((x) => x.id === p.repetidaDe) + 1 : 0; // numero atual da pagina igual
     const marcas = (p.incerto ? `<span class="m-alerta" title="Não tive certeza do lado desta página — confira (R gira)">↻?</span>` : "") +
@@ -374,8 +399,12 @@ function renderGrade() {
     d.innerHTML = `<img src="${p.thumb || ""}" alt="pág ${idx + 1}" draggable="false" />
       <span class="pag-num">${idx + 1}</span>
       <span class="pag-check">${sel.has(p.id) ? "✓" : ""}</span>${marcas ? `<span class="pag-marcas">${marcas}</span>` : ""}${tipoTag}`;
-    d.onclick = (e) => clicarPagina(p.id, e);
-    d.ondblclick = () => { if (window.Visor) window.Visor.abrir(p.id); };
+    d.onclick = (e) => {
+      const tag = e.target.closest && e.target.closest(".pag-tipo.clicavel");
+      if (tag && window.Assistente) { e.stopPropagation(); window.Assistente.menuTipo(p.id, tag); return; }
+      clicarPagina(p.id, e);
+    };
+    d.ondblclick = (e) => { if (e.target.closest && e.target.closest(".pag-tipo")) return; if (window.Visor) window.Visor.abrir(p.id); };
     d.draggable = true;
     d.addEventListener("dragstart", (e) => { arrastando = p.id; d.classList.add("arrastando"); e.dataTransfer.effectAllowed = "move"; });
     d.addEventListener("dragend", () => { arrastando = null; $$(".pag").forEach((x) => x.classList.remove("arrastando", "alvo")); });
@@ -396,7 +425,7 @@ function soltarEm(idAlvo) {
   const de = paginas.findIndex((p) => p.id === arrastando);
   const para = paginas.findIndex((p) => p.id === idAlvo);
   if (de < 0 || para < 0) return;
-  const foto = fotoDaTela();
+  const foto = fotoDaTela(false);
   registrarDesfazer("mudar a ordem", async () => voltarFoto(foto));
   const [item] = paginas.splice(de, 1);
   paginas.splice(para, 0, item);
@@ -420,9 +449,12 @@ function clicarPagina(id, e) {
   mostrarPrevia(id);
 }
 
+let _previaPedida = 0;
 async function mostrarPrevia(id) {
   const img = $("#previa"), vaz = $("#previaVazia");
+  const minha = ++_previaPedida;
   const big = await window.api.previa(id, 900);
+  if (minha !== _previaPedida) return; // andou pra outra pagina enquanto esta carregava
   if (big) { img.src = big; img.style.display = "block"; vaz.style.display = "none"; }
 }
 
@@ -641,6 +673,7 @@ async function removerPaginas(ids, rotulo) {
   if (!ids.length) return;
   const tirar = new Set(ids);
   const itens = paginas.map((p, i) => ({ p, i })).filter((x) => tirar.has(x.p.id));
+  itens.forEach(({ p }) => (p.lendo = false)); // se voltar com Ctrl+Z, nao fica preso em "lendo…"
   for (const id of ids) await window.api.removerPagina(id);
   paginas = paginas.filter((p) => !tirar.has(p.id));
   for (const id of ids) sel.delete(id);
@@ -666,7 +699,7 @@ function moverSel(dir) {
   const i = paginas.findIndex((p) => p.id === id);
   const j = i + dir;
   if (j < 0 || j >= paginas.length) return;
-  const foto = fotoDaTela();
+  const foto = fotoDaTela(false);
   registrarDesfazer("mudar a ordem", async () => voltarFoto(foto));
   [paginas[i], paginas[j]] = [paginas[j], paginas[i]];
   renderGrade();
@@ -688,12 +721,13 @@ async function alternarCorSel() {
   if (!sel.size || ocupado) return;
   const ids = paginas.filter((p) => sel.has(p.id)).map((p) => p.id);
   const colorir = ids.some((id) => !paginas.find((p) => p.id === id).colorido);
+  const corAntes = new Map(ids.map((id) => [id, !!paginas.find((p) => p.id === id).colorido])); // pra desfazer pagina por pagina
   ocupado = true; atualizarBotoesFonte();
   if (ids.length > 2) mostrarOverlay(colorir ? "Deixando colorido…" : "Passando pra tons de cinza…");
   let r;
   try { r = await definirCor(ids, colorir); }
   finally { ocupado = false; atualizarBotoesFonte(); esconderOverlay(); }
-  registrarDesfazer(colorir ? "deixar colorido" : "tirar a cor", async () => { await definirCor(ids, !colorir); });
+  registrarDesfazer(colorir ? "deixar colorido" : "tirar a cor", async () => { for (const [id, c] of corAntes) await definirCor([id], c); });
   renderGrade();
   if (sel.size === 1) mostrarPrevia([...sel][0]);
   if (r.semCor) setStatus(`${r.semCor} página(s) não têm cor na imagem original (escaneada ou fotografada em tons de cinza). Para escanear colorido: Configurações → Scanner → Cor.`, "aviso");
@@ -706,7 +740,13 @@ async function aplicarTipo(sigla, colorido) {
   if (!alvo.length) { setStatus("Marque uma ou mais páginas antes de escolher o tipo.", "aviso"); return; }
   const foto = fotoDaTela();
   const corAntes = new Map(alvo.map((id) => [id, paginas.find((p) => p.id === id).colorido]));
-  for (const id of alvo) { const p = paginas.find((x) => x.id === id); if (p) p.tipo = sigla; }
+  for (const id of alvo) {
+    const p = paginas.find((x) => x.id === id);
+    if (!p) continue;
+    // corrigiu um tipo reconhecido sozinho: o DigiDoc aprende com o texto dessa pagina
+    if (p.tipoAuto && p.tipo !== sigla) window.api.aprenderTipo(p.id, sigla);
+    p.tipo = sigla; p.tipoAuto = false;
+  }
   renderGrade();
   // o tipo decide a cor (ex.: Foto 3x4 colorida, RG em cinza)
   let r = { mudou: 0, semCor: 0 };
@@ -749,7 +789,7 @@ function reposicionar(alvo, novaOrdem) {
 function inverterOrdem() {
   const alvo = alvoOrganizar();
   if (alvo.length < 2) { setStatus("Precisa de pelo menos 2 páginas.", "aviso"); return; }
-  const foto = fotoDaTela();
+  const foto = fotoDaTela(false);
   registrarDesfazer("inverter a ordem", async () => voltarFoto(foto));
   reposicionar(alvo, alvo.slice().reverse());
   renderGrade();
@@ -769,7 +809,7 @@ function intercalarFrenteVerso(versosAoContrario = true) {
   if (versosAoContrario) versos.reverse();
   const nova = [];
   for (let i = 0; i < n; i++) nova.push(frentes[i], versos[i]);
-  const foto = fotoDaTela();
+  const foto = fotoDaTela(false);
   registrarDesfazer("intercalar frente e verso", async () => voltarFoto(foto));
   reposicionar(alvo, nova);
   renderGrade();
@@ -799,7 +839,7 @@ async function juntarSelecionadas() {
     await window.api.restaurarPaginas(ids);
     paginas = paginas.filter((p) => p.id !== nova.id);
     for (const { p, i } of itens) paginas.splice(Math.min(i, paginas.length), 0, p);
-  }, [nova.id]);
+  }, ids); // se esse desfazer sair da pilha, as paginas originais (na lixeira) saem da memoria
   renderGrade(); mostrarPrevia(nova.id);
   setStatus(`${marcadas.length} páginas juntadas numa folha só. Ctrl+Z desfaz.`, "ok");
 }
@@ -879,6 +919,7 @@ function atualizarSalvar() {
 
 async function salvar() {
   const nome = $("#inpAssociado").value.trim();
+  const edicao = window.Assistente ? window.Assistente.edicao : null; // reabriu documentos salvos pra editar
   if (!nome) { setStatus("Digite o nome do associado.", "aviso"); $("#inpAssociado").focus(); return; }
   if (!paginas.length) { setStatus("Nenhuma página.", "aviso"); return; }
   const nivel = $("#selNivel").value;
@@ -887,22 +928,32 @@ async function salvar() {
   try {
     let r;
     if (modo === "dossie") {
-      r = await window.api.salvarDossie({ nomeAssociado: nome, ids: paginas.map((p) => p.id), nivel });
+      r = await window.api.salvarDossie({ nomeAssociado: nome, ids: paginas.map((p) => p.id), nivel, substituir: !!edicao, nomeArquivo: edicao ? window.Assistente.arquivoDaEdicao(cfg.siglaDossie) : null });
     } else {
-      const grupos = montarGrupos().map((g) => ({ tipoSigla: g.tipoSigla, ids: g.ids, colorido: g.colorido }));
+      const grupos = montarGrupos().map((g) => ({ tipoSigla: g.tipoSigla, ids: g.ids, colorido: g.colorido, nomeArquivo: edicao ? window.Assistente.arquivoDaEdicao(g.tipoSigla) : null }));
       if (!grupos.length) { setStatus("Nenhuma página tem tipo. Marque as páginas primeiro.", "aviso"); return; }
-      r = await window.api.salvarDocumentos({ nomeAssociado: nome, grupos, nivel });
+      r = await window.api.salvarDocumentos({ nomeAssociado: nome, grupos, nivel, substituir: !!edicao });
     }
     if (!r.ok) { setStatus(r.msg || "Erro ao salvar.", "erro"); return; }
     relatarSalvamento(r);
+    // so conta o que foi gravado mesmo (cancelar a pergunta "ja existe" ou dar erro NAO tira as paginas)
+    const okSalvos = r.salvos.filter((s) => s.caminho && !s.cancelado && !s.erro);
+    const idsSalvos = new Set(okSalvos.flatMap((s) => s.ids || []));
+    const tudoCerto = okSalvos.length > 0 && okSalvos.length === r.salvos.length;
+    if (!okSalvos.length) return; // nada gravado: tudo continua na tela, como estava
+    if (edicao && tudoCerto) window.Assistente.terminouEdicao();
     if (cfg.aposSalvar.tocarSom) bip();
-    const limpou = cfg.aposSalvar.limparPaginas && !r.salvos.some((s) => s.erro);
-    if (limpou) {
-      await window.api.limparPaginas();
-      paginas = []; sel.clear(); ancora = null;
+    let limpou = false;
+    if (cfg.aposSalvar.limparPaginas) {
+      // tira da tela so as paginas salvas: as sem tipo (ou que chegaram durante o salvamento) ficam
+      const restam = paginas.filter((p) => !idsSalvos.has(p.id));
+      await window.api.descartarPaginas([...idsSalvos]);
+      paginas = restam; sel.clear(); ancora = null;
       $("#previa").style.display = "none"; $("#previaVazia").style.display = "block";
-      zerarDesfazer();
+      limpou = !restam.length;
+      if (limpou) zerarDesfazer(); // tela vazia: o desfazer comeca do zero
       renderGrade();
+      if (restam.length) toast(`${restam.length} página(s) ${modo === "documentos" ? "sem tipo " : ""}ficaram na tela (não foram salvas).`, "aviso", 8000);
     }
     // faltou documento obrigatorio? avisa (nao impede de salvar)
     const faltou = modo === "documentos" ? obrigatoriosFaltando() : null;
@@ -915,10 +966,11 @@ async function salvar() {
     // fila de associados: marca este como feito e ja poe o proximo nome
     let foiProFila = false;
     if (window.Fila) foiProFila = await window.Fila.aposSalvar(nome, limpou);
-    // pronto pro proximo: volta pro nome ja selecionado (e so digitar o proximo associado)
+    // pronto pro proximo: limpa o nome do associado e deixa o cursor no campo
     if (!foiProFila && limpou && cfg.aposSalvar.proximoAssociado !== false) {
       const inp = $("#inpAssociado");
-      setTimeout(() => { inp.focus(); inp.select(); }, 50);
+      inp.value = ""; await onAssociadoMudou();
+      setTimeout(() => inp.focus(), 50);
     }
   } catch (e) {
     setStatus("Erro ao salvar: " + e.message, "erro");
@@ -1222,7 +1274,9 @@ function aoReceberFotoCelular(reg) {
 }
 
 // ---------------- configuracoes ----------------
-function abrirConfig() {
+let familiasDoc = []; // documentos que o reconhecimento sabe identificar (vem do main)
+async function abrirConfig() {
+  try { familiasDoc = await window.api.familiasDocumento(); } catch { familiasDoc = []; }
   $("#configCorpo").innerHTML = montarFormConfig(cfg);
   $("#modalConfig").classList.remove("oculto");
   bindConfigDinamico();
@@ -1270,7 +1324,18 @@ function montarFormConfig(c) {
     <h3>Produção</h3>
     <div class="cfg-linha"><label class="rot">Meta de associados por dia<span class="sub">aparece embaixo, com a barrinha de progresso (0 = sem meta)</span></label>
       <input type="number" id="cfgMetaDia" min="0" max="999" value="${Number(c.metaDia) || 0}"></div>
-    ${linhaSw("cfgProximo", "Depois de salvar, voltar pro nome", "já deixa o campo Associado selecionado pra digitar o próximo", c.aposSalvar.proximoAssociado !== false)}
+    ${linhaSw("cfgProximo", "Depois de salvar, limpar o nome", "o campo Associado fica vazio e com o cursor, pronto pro próximo", c.aposSalvar.proximoAssociado !== false)}
+  </div>
+
+  <div class="cfg-grupo" id="gReconhecer">
+    <h3>Reconhecimento do documento</h3>
+    ${linhaSw("cfgReconhecer", "Reconhecer o tipo sozinho", "no modo documento por documento, lê o texto da página e já marca o tipo. Errou? Clique na etiqueta da página e troque — ele aprende com a correção.", !!c.reconhecerTipo)}
+    <p class="sub" style="margin:4px 0 8px">Quando reconhecer cada documento, <b>salvar como</b> (nome do arquivo). Ex.: comprovante de endereço → <b>ENDERECO</b>. Se o nome ainda não for um tipo, o DigiDoc cria.</p>
+    <table class="tipos-tabela rec-tabela"><thead><tr><th>Reconhecer</th><th>Documento</th><th>Salvar como</th></tr></thead><tbody id="recBody">
+      ${familiasDoc.map((f) => `<tr data-fam="${f.id}"><td style="text-align:center">${sw("rec-" + f.id, f.ativo)}</td><td>${esc(f.nome)}</td>
+        <td><input type="text" class="rec-nome" value="${esc(f.nomeEscrito)}" placeholder="${esc(f.usa || f.padrao)}"></td></tr>`).join("")}
+    </tbody></table>
+    <div style="margin-top:8px"><button class="mini" id="btnEsquecerAprendizado" title="Apaga o que ele aprendeu com as suas correções">Esquecer o que aprendeu</button></div>
   </div>
 
   <div class="cfg-grupo">
@@ -1458,6 +1523,10 @@ function bindConfigDinamico() {
 
   const bd = $("#btnDesinstalar");
   if (bd) bd.onclick = desinstalarDoPC;
+  const be = $("#btnEsquecerAprendizado");
+  if (be) be.onclick = async () => { if (confirm("Esquecer tudo o que o reconhecimento aprendeu com as suas correções?")) { await window.api.esquecerTipos(); be.textContent = "✓ esquecido"; } };
+  // escrever um nome em "salvar como" ja liga o reconhecimento daquele documento
+  $$("#recBody .rec-nome").forEach((inp) => inp.addEventListener("input", () => { if (inp.value.trim()) inp.closest("tr").querySelector("input[type=checkbox]").checked = true; }));
   const ba = $("#btnProcurarAtu");
   if (ba) ba.onclick = async () => {
     const t = $("#cfgAtuTxt");
@@ -1547,6 +1616,13 @@ function coletarConfig() {
   c.aposSalvar.tocarSom = $("#cfgSom").checked;
   c.aposSalvar.limparPaginas = $("#cfgLimpar").checked;
   c.aposSalvar.proximoAssociado = $("#cfgProximo").checked;
+  c.reconhecerTipo = $("#cfgReconhecer").checked;
+  // Reconhecimento: ligado/desligado e o "salvar como" de cada documento
+  c.reconhecimento = {};
+  $$("#recBody tr").forEach((tr) => {
+    const id = tr.dataset.fam, nome = tr.querySelector(".rec-nome").value.trim().toUpperCase();
+    c.reconhecimento[id] = { ativo: tr.querySelector("#rec-" + id).checked, nome };
+  });
   c.metaDia = Math.max(0, parseInt($("#cfgMetaDia").value) || 0);
   c.atualizacao = Object.assign({}, c.atualizacao, { automatica: $("#cfgAtuAuto").checked });
   if (_backupEscolhido !== null) c.aposSalvar.pastaBackup = _backupEscolhido;
@@ -1613,7 +1689,7 @@ function onTecla(e) {
   else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { navegar(-1, e.shiftKey); e.preventDefault(); }
   else if (e.key === "Home") { navegarPara(0); e.preventDefault(); }
   else if (e.key === "End") { navegarPara(paginas.length - 1); e.preventDefault(); }
-  else if (e.key === " ") { e.preventDefault(); if (window.Visor && (ancora || paginas[0])) window.Visor.abrir(ancora || paginas[0].id); }
+  else if (e.key === " ") { e.preventDefault(); if (!ocupado && window.Visor && (ancora || paginas[0])) window.Visor.abrir(ancora || paginas[0].id); }
   else if (e.key === "c" || e.key === "C") { alternarCorSel(); }
   else if (modo === "documentos" && /^[0-9]$/.test(e.key)) {
     const t = cfg.tipos.find((t) => t.tecla === e.key);
@@ -1656,15 +1732,26 @@ function bind() {
   $("#btnFecharConfig").onclick = fecharConfig;
   $("#btnCancelarConfig").onclick = fecharConfig;
   $("#btnSalvarConfig").onclick = salvarConfig;
+  // so mostra os valores padrao no formulario: nada muda ate clicar em "Salvar configuracoes"
   $("#btnRestaurar").onclick = async () => {
-    cfg = await window.api.resetConfig();
-    try { aplicarScannerInfo(await window.api.scannerInfo()); } catch {}
-    abrirConfig(); setStatus("Padrão restaurado (confirme em Salvar).");
+    const p = await window.api.configPadrao();
+    $("#configCorpo").innerHTML = montarFormConfig(p);
+    bindConfigDinamico();
+    _pastaEscolhida = p.pastaSaida; _backupEscolhido = (p.aposSalvar && p.aposSalvar.pastaBackup) || "";
+    setStatus("Valores padrão na tela — clique em Salvar configurações pra valer (ou Cancelar pra deixar como estava).");
   };
 
   $("#inpAssociado").addEventListener("input", onAssociadoMudou);
   $("#inpAssociado").addEventListener("change", onAssociadoMudou);
   $("#btnAbrirPasta").onclick = () => window.api.abrirPasta($("#inpAssociado").value.trim());
+  $("#btnColarNome").onclick = () => window.Assistente.colarNome();
+  $("#btnRecentes").onclick = (e) => window.Assistente.abrirRecentes(e.currentTarget);
+  $("#btnReconhecer").onclick = () => window.Assistente.reconhecerAgora();
+  $("#chkReconhecer").onchange = async (e) => {
+    cfg.reconhecerTipo = e.target.checked; await window.api.saveConfig(cfg);
+    setStatus(cfg.reconhecerTipo ? "✨ Reconhecer sozinho: ligado. As próximas páginas já vêm com o tipo." : "Reconhecer sozinho: desligado.", "ok");
+    if (cfg.reconhecerTipo && paginas.some((p) => !p.tipo)) window.Assistente.reconhecerAgora();
+  };
 
   $("#btnEscanear").onclick = () => escanear("auto");
   $("#btnAlim").onclick = () => escanear("alimentador");
@@ -1721,7 +1808,11 @@ function bind() {
   });
   // colar imagem (Ctrl+V)
   document.addEventListener("paste", async (e) => {
-    if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+    // colando numa caixa de texto (nome, lista da Fila…), numa janela aberta ou no cantinho: e texto,
+    // nao pagina. (O Excel copia as celulas tambem como imagem — virava pagina em vez de texto)
+    const ativo = document.activeElement;
+    if (ativo && (["INPUT", "TEXTAREA", "SELECT"].includes(ativo.tagName) || ativo.isContentEditable)) return;
+    if (document.querySelector(".modal:not(.oculto)") || (window.Cantinho && window.Cantinho.aberto())) return;
     if (ocupado) return;
     const temImg = [...(e.clipboardData?.items || [])].some((i) => i.type.startsWith("image/"));
     if (!temImg) return;

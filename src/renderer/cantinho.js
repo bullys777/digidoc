@@ -18,13 +18,21 @@ window.Cantinho = (() => {
       { id: "dino", ic: "🦖", nome: "Dinossauro", desc: "o do Chrome — espaço pula, seta abaixa", url: "cantinho-jogos://jogos/dino/index.html" },
       { id: "adr", ic: "🔥", nome: "A Dark Room", desc: "aventura em texto premiada (salva o progresso)", url: "cantinho-jogos://jogos/adarkroom/index.html?lang=pt_br" },
     ] },
+    { grupo: "Jogar com os colegas — crie a sala e clique em 📨 Convidar (só entra quem tiver o link)", amigos: true, itens: [
+      { id: "papergames", ic: "❌", nome: "Papergames", desc: "jogo da velha, Ligue 4, batalha naval, xadrez — sem cadastro", url: "https://papergames.io/pt/" },
+      { id: "stopots", ic: "🛑", nome: "Stop (Adedonha)", desc: "o Stop clássico com os amigos", url: "https://stopots.com/pt/" },
+      { id: "gartic", ic: "✏️", nome: "Gartic", desc: "um desenha, os outros adivinham", url: "https://gartic.io" },
+      { id: "skribbl", ic: "🖍", nome: "Skribbl", desc: "desenho e adivinha (sala privada)", url: "https://skribbl.io" },
+      { id: "codenames", ic: "🕵", nome: "Codenames", desc: "jogo de palavras em times (tem português)", url: "https://codenames.game" },
+      { id: "xadrez", ic: "♟", nome: "Xadrez", desc: "Lichess: “jogar com um amigo” gera o link", url: "https://lichess.org" },
+      { id: "bga", ic: "🎲", nome: "Board Game Arena", desc: "centenas de jogos de tabuleiro (precisa de conta grátis)", url: "https://boardgamearena.com" },
+    ] },
     { grupo: "Jogos online", itens: [
       { id: "poki", ic: "🕹", nome: "Poki", desc: "centenas de jogos bons, de tudo", url: "https://poki.com/br" },
       { id: "crazy", ic: "🎯", nome: "CrazyGames", desc: "mais centenas de jogos", url: "https://www.crazygames.com.br" },
       { id: "termo", ic: "🟩", nome: "Termo", desc: "adivinhe a palavra do dia", url: "https://term.ooo" },
       { id: "contexto", ic: "🧠", nome: "Contexto", desc: "ache a palavra secreta pela proximidade", url: "https://contexto.me" },
-      { id: "gartic", ic: "✏️", nome: "Gartic", desc: "desenhe e adivinhe com outras pessoas", url: "https://gartic.io" },
-      { id: "xadrez", ic: "♟", nome: "Xadrez", desc: "Lichess: contra o computador ou gente", url: "https://lichess.org" },
+      { id: "slither", ic: "🐍", nome: "Slither.io", desc: "a cobrinha contra gente do mundo todo", url: "https://slither.io" },
       { id: "paciencia", ic: "🃏", nome: "Paciência", desc: "a do Google (clique em Jogar)", url: "https://www.google.com/search?q=solitaire&hl=pt-BR" },
       { id: "minado", ic: "💣", nome: "Campo minado", desc: "o do Google (clique em Jogar)", url: "https://www.google.com/search?q=minesweeper&hl=pt-BR" },
     ] },
@@ -60,6 +68,7 @@ window.Cantinho = (() => {
         <button class="ct-btn" id="ctAvancar" title="Avançar">▶</button>
         <button class="ct-btn" id="ctRecarregar" title="Recarregar">⟳</button>
         <input id="ctEndereco" class="ct-endereco" placeholder="Digite um site (ex.: netflix não toca aqui) ou pesquise…" spellcheck="false">
+        <button class="ct-btn oculto" id="ctConvidar" title="Copiar o link desta sala pra mandar pros colegas (WhatsApp, Teams…)">📨 Convidar</button>
         <button class="ct-btn" id="ctConfig" title="Como esconder">⚙</button>
         <button class="ct-btn ct-esconder" id="ctEsconder" title="Esconder tudo agora (Esc)">🙈 Esconder <kbd>Esc</kbd></button>
       </div>
@@ -76,6 +85,13 @@ window.Cantinho = (() => {
     raiz.querySelector("#ctVoltar").onclick = () => { const w = vivos.get(atual); if (w && w.canGoBack()) w.goBack(); };
     raiz.querySelector("#ctAvancar").onclick = () => { const w = vivos.get(atual); if (w && w.canGoForward()) w.goForward(); };
     raiz.querySelector("#ctRecarregar").onclick = () => { const w = vivos.get(atual); if (w) w.reload(); };
+    // copia o link da sala aberta (o colega cola no navegador ou no cantinho dele)
+    raiz.querySelector("#ctConvidar").onclick = async () => {
+      const w = vivos.get(atual); if (!w) return;
+      const url = w.getURL();
+      await window.api.clipboardCopiar(url);
+      toast(`📨 <b>Link copiado!</b> Cole no WhatsApp/Teams pro colega. Ele abre no navegador ou cola na barra do cantinho dele.<br><small>${esc(url)}</small>`, "ok", 9000);
+    };
     const end = raiz.querySelector("#ctEndereco");
     end.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
@@ -103,6 +119,7 @@ window.Cantinho = (() => {
     raiz.querySelector("#ctHome").classList.remove("oculto");
     raiz.querySelectorAll(".ct-wv").forEach((w) => w.classList.add("oculto"));
     raiz.querySelector("#ctEndereco").value = "";
+    raiz.querySelector("#ctConvidar").classList.add("oculto");
     desenharInicio();
   }
 
@@ -133,6 +150,7 @@ window.Cantinho = (() => {
       }
     } else { vivos.delete(item.id); vivos.set(item.id, wv); } // vira o mais recente
     raiz.querySelectorAll(".ct-wv").forEach((w) => w.classList.toggle("oculto", w !== wv));
+    raiz.querySelector("#ctConvidar").classList.toggle("oculto", item.url.startsWith("cantinho-jogos://"));
     try { wv.setAudioMuted(false); } catch {}
     raiz.querySelector("#ctEndereco").value = item.url.startsWith("cantinho-jogos://") ? "" : item.url;
     setTimeout(() => { try { wv.focus(); } catch {} }, 50);

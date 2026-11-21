@@ -39,7 +39,7 @@ function abrirJanela({ titulo, largura = 560, corpo = "", rodape = "", classe = 
     <div class="modal-corpo">${corpo}</div>
     ${rodape ? `<div class="modal-rod">${rodape}</div>` : ""}</div>`;
   document.body.appendChild(ov);
-  const fechar = () => { Dica.esconder(); ov.remove(); document.removeEventListener("keydown", esc_); };
+  const fechar = () => { Dica.esconder(); ov.remove(); document.removeEventListener("keydown", esc_, true); };
   // Esc fecha so a janela de cima
   const esc_ = (e) => {
     if (e.key !== "Escape") return;
@@ -287,6 +287,8 @@ window.Visor = (() => {
     // teclado do visualizador (antes dos atalhos da tela principal)
     document.addEventListener("keydown", (e) => {
       if (!aberto() || document.querySelector(".modal:not(.oculto)")) return;
+      // cantinho aberto por cima: as teclas sao dele (inclusive o Esc de esconder)
+      if (window.Cantinho && window.Cantinho.aberto()) return;
       const k = e.key, ctrl = e.ctrlKey || e.metaKey;
       let feito = true;
       if (k === "Escape") { cortando ? sairCorte() : fechar(); }
@@ -322,9 +324,10 @@ window.ImportarPDF = (() => {
     }
     return lib;
   }
-  // progresso(msg, feito, total). Devolve { adicionadas, brancas, erro }
-  async function importar(caminho, progresso) {
-    const out = { adicionadas: 0, brancas: 0, erro: "" };
+  // progresso(msg, feito, total). Devolve { adicionadas, brancas, erro, ids }
+  // opcoes.semAjustes: PDF que o proprio DigiDoc salvou (reabrir pra editar): entra como esta
+  async function importar(caminho, progresso, opcoes = {}) {
+    const out = { adicionadas: 0, brancas: 0, erro: "", ids: [] };
     const nome = caminho.split(/[\\/]/).pop();
     const arq = await window.api.lerPdf(caminho);
     if (arq.erro) { out.erro = `${nome}: ${arq.erro}`; return out; }
@@ -344,13 +347,15 @@ window.ImportarPDF = (() => {
         cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
         const ctx = cv.getContext("2d");
         ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
-        await pg.render({ canvasContext: ctx, viewport: vp }).promise;
+        // intent "print": desenha sem esperar quadro da tela. No modo normal ("display") o pdf.js espera
+        // o proximo quadro — com a janela coberta por outra, o Windows pausa a tela e a importacao travava
+        await pg.render({ canvasContext: ctx, viewport: vp, intent: "print" }).promise;
         const blob = await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.92));
         const bytes = new Uint8Array(await blob.arrayBuffer());
         cv.width = cv.height = 0; pg.cleanup();
-        const reg = await window.api.addBuffer({ bytes, colorido: false });
+        const reg = await window.api.addBuffer({ bytes, colorido: false, semAjustes: !!opcoes.semAjustes });
         if (reg && reg.branca) out.brancas++;
-        else if (reg && reg.id) { adicionarResultados([reg]); out.adicionadas++; }
+        else if (reg && reg.id) { adicionarResultados([reg]); out.adicionadas++; out.ids.push(reg.id); }
       }
       progresso && progresso(`${nome}: pronto`, doc.numPages, doc.numPages);
     } catch (e) {
@@ -593,6 +598,11 @@ async function abrirHistorico() {
     J.qq("[data-pasta]").forEach((b) => {
       b.onclick = async () => { const e = h.itens[+b.dataset.pasta]; if (!(await window.api.abrirDoHistorico(e.pasta))) setStatus("Essa pasta não existe mais.", "aviso"); };
     });
+    // 2 cliques na linha: traz os documentos de volta pra tela pra editar
+    J.qq(".hi-item").forEach((el, i) => {
+      el.title = "2 cliques: abrir esses documentos pra editar";
+      el.ondblclick = (ev) => { if (ev.target.closest("button")) return; J.fechar(); if (window.Assistente) window.Assistente.reabrir(h.itens[i]); };
+    });
   }
   J.q("#hiLimpar").onclick = async () => { if (confirm("Apagar o histórico deste PC? (os PDFs não são apagados)")) { await window.api.limparHistorico(); desenhar(); } };
   J.q("#hiPainel").onclick = () => { J.fechar(); window.Painel.abrir(); };
@@ -725,7 +735,7 @@ window.Fila = (() => {
     const b = document.getElementById("filaProx"), bf = document.getElementById("btnFila");
     if (!b) return;
     const pend = pendentes(), prox = proximo();
-    if (bf) bf.textContent = fila.itens.length ? `📋 Fila ${fila.itens.length - pend.length}/${fila.itens.length}` : "📋 Fila";
+    if (bf) bf.textContent = fila.itens.length ? `👥 Fila ${fila.itens.length - pend.length}/${fila.itens.length}` : "👥 Fila";
     if (!prox) { b.classList.add("oculto"); return; }
     b.classList.remove("oculto");
     b.innerHTML = `Próximo: <b>${esc(prox.nome)}</b> ▶`;
@@ -754,7 +764,7 @@ window.Fila = (() => {
   }
 
   function abrir() {
-    const J = abrirJanela({ titulo: "📋 Fila de associados", largura: 640,
+    const J = abrirJanela({ titulo: "👥 Fila de associados", largura: 640,
       corpo: `<p class="sub" style="margin-top:0">Cole a lista de nomes (um por linha) ou importe de um arquivo. Depois de salvar cada associado, o DigiDoc marca como feito e já põe o próximo nome.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <button class="btn-sec" id="fiColar">📋 Colar nomes</button>

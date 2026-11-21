@@ -45,9 +45,12 @@
              placeholder="Digite o nome do associado…" spellcheck="false" />
       <datalist id="listaAssociados"></datalist>
     </div>
+    <button id="btnColarNome" class="btn-sec btn-icone" title="Colar o nome que está copiado">📋 Colar</button>
+    <button id="btnRecentes" class="btn-sec btn-icone" title="Recentes: clique = pôr o nome · 2 cliques = abrir os documentos pra editar">🕘 Recentes</button>
     <div class="assoc-docs" id="assocDocs" title="PDFs já salvos na pasta deste associado"></div>
+    <span id="bannerEdicao" class="banner-edicao oculto"></span>
     <button id="filaProx" class="fila-prox oculto" title="Próximo da fila — clique para usar"></button>
-    <button id="btnFila" class="btn-sec" title="Fila de associados: cole a lista de nomes e vá fazendo um por um">📋 Fila</button>
+    <button id="btnFila" class="btn-sec" title="Fila de associados: cole a lista de nomes e vá fazendo um por um">👥 Fila</button>
     <button id="btnAbrirPasta" class="btn-sec" title="Abrir a pasta deste associado">📂 Pasta</button>
   </section>
 
@@ -96,6 +99,9 @@
         <div class="doc-extra">
           <button id="btnCadaPag" class="mini">1 página = 1 documento</button>
           <button id="btnLimparTipos" class="mini">Limpar marcações</button>
+          <span class="flex1"></span>
+          <button id="btnReconhecer" class="mini" title="Ler o texto das páginas (as marcadas, ou as sem tipo) e marcar o tipo">✨ Reconhecer tipos</button>
+          <label class="mini-check" title="Já reconhecer o tipo das páginas que entrarem"><input type="checkbox" id="chkReconhecer"> sozinho</label>
         </div>
         <div id="resumoDocs" class="resumo-docs"></div>
       </div>
@@ -145,7 +151,7 @@
       <span class="v-sep"></span>
       <button id="vGirarEsq" class="v-btn" title="Girar para a esquerda (Shift+R)">↺</button>
       <button id="vGirar" class="v-btn" title="Girar para a direita (R)">↻</button>
-      <button id="vRecortar" class="v-btn" title="Recortar (C)">✂ Recortar</button>
+      <button id="vRecortar" class="v-btn" title="Recortar (X)">✂ Recortar</button>
       <button id="vCor" class="v-btn" title="Colorido / tons de cinza">🎨 Cor</button>
       <button id="vRemover" class="v-btn perigo" title="Remover esta página (Del)">🗑</button>
       <span class="flex1"></span>
@@ -206,6 +212,7 @@
 
   <script src="app.js"></script>
   <script src="extras.js"></script>
+  <script src="assistente.js"></script>
   <script src="som.js"></script>
   <script src="tutorial.js"></script>
   <script src="cantinho.js"></script>

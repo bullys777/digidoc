@@ -136,7 +136,8 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 700; background: var(-
 .pag-marcas span.m-alerta { background: var(--amarelo); color: #fff; font-weight: 800; font-size: 11px; padding: 0 4px; }
 
 /* ---------- aviso flutuante ---------- */
-.toast { position: fixed; right: 16px; bottom: 44px; z-index: 70; max-width: 460px; background: var(--surface); color: var(--texto); border: 1px solid var(--borda); border-left: 5px solid var(--amarelo); border-radius: 10px; padding: 12px 34px 12px 14px; font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgba(0,0,0,.18); transform: translateY(20px); opacity: 0; pointer-events: none; transition: .2s; cursor: pointer; }
+/* fica no alto, em cima da previa: embaixo ele cobria o botao Salvar e engolia o clique */
+.toast { position: fixed; right: 16px; top: 146px; z-index: 70; max-width: 460px; background: var(--surface); color: var(--texto); border: 1px solid var(--borda); border-left: 5px solid var(--amarelo); border-radius: 10px; padding: 12px 34px 12px 14px; font-size: 13px; line-height: 1.5; box-shadow: 0 6px 24px rgba(0,0,0,.18); transform: translateY(-12px); opacity: 0; pointer-events: none; transition: .2s; cursor: pointer; }
 .toast.on { transform: none; opacity: 1; pointer-events: auto; }
 .toast.ok { border-left-color: var(--verde); }
 .toast-x { position: absolute; top: 8px; right: 10px; color: var(--texto-fraco); font-size: 12px; }
@@ -170,3 +171,45 @@ kbd { font-family: inherit; font-size: 11px; font-weight: 700; background: var(-
 /* rodape mais compacto: cabe numa linha so tambem no modo documento por documento */
 .fonte { padding-left: 12px; padding-right: 12px; }
 .rodape { gap: 10px 12px; }
+
+/* ---------- etiqueta do tipo clicavel (trocar com 1 clique) ---------- */
+.pag-tipo.clicavel { cursor: pointer; }
+.pag-tipo.clicavel:hover { filter: brightness(1.12); }
+.pag-tipo.sem-tipo { background: color-mix(in srgb, var(--texto) 55%, transparent); }
+.pag-tipo.lendo { background: var(--acento); opacity: .85; animation: pulsarTipo 1.2s ease-in-out infinite; }
+@keyframes pulsarTipo { 50% { opacity: .55; } }
+.menu-tipo { width: 280px; max-height: 70vh; overflow-y: auto; }
+.menu-tipo .menu-item { align-items: center; padding: 7px 10px; }
+.menu-tipo .menu-item kbd { margin-left: auto; }
+.menu-tipo .bolinha { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.mt-tit { font-size: 12px; font-weight: 700; color: var(--texto-fraco); padding: 6px 10px 4px; }
+.mt-tit small { display: block; font-weight: 500; font-size: 11px; }
+
+/* ---------- nome do associado: colar / recentes / editando ---------- */
+.btn-icone { white-space: nowrap; padding: 8px 10px; }
+.menu-recentes { width: 410px; padding: 8px; }
+.mr-busca { width: 100%; border: 1px solid var(--borda); background: var(--bg); color: var(--texto); padding: 7px 9px; border-radius: 7px; font-size: 13px; margin-bottom: 6px; }
+.mr-lista { max-height: 340px; overflow-y: auto; }
+.mr-item { padding: 7px 9px; border-radius: 8px; cursor: pointer; user-select: none; }
+.mr-item:hover { background: var(--surface-2); }
+.mr-item b { display: block; font-size: 13px; }
+.mr-item small { display: block; font-size: 11.5px; color: var(--texto-fraco); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mr-item small .sumiu { text-decoration: line-through; opacity: .6; }
+.mr-rod { font-size: 11.5px; color: var(--texto-fraco); padding: 6px 4px 2px; border-top: 1px solid var(--borda); margin-top: 6px; }
+.banner-edicao { font-size: 12.5px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--amarelo) 14%, transparent); border: 1px solid color-mix(in srgb, var(--amarelo) 45%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+.banner-edicao .mini { margin-left: 6px; padding: 2px 8px; }
+
+/* ---------- reconhecer tipos (painel do documento por documento) ---------- */
+.doc-extra { align-items: center; flex-wrap: wrap; }
+.mini-check { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--texto-fraco); cursor: pointer; }
+.toast-btn { margin-left: 6px; border: 1px solid var(--acento); background: var(--acento); color: #fff; border-radius: 6px; padding: 3px 9px; font-weight: 700; font-size: 12px; cursor: pointer; }
+
+/* liga/desliga dentro de tabela (Cor?, Obrig., Reconhecer) perdia o tamanho e virava uma barrinha */
+.switch { display: inline-block; vertical-align: middle; }
+.rec-tabela td:first-child { width: 86px; text-align: center; }
+.rec-tabela td:last-child { width: 230px; }
+.tipos-tabela input.t-sigla { width: 104px; }
+
+/* camadas: aviso por cima do cantinho (o "Link copiado" nao aparecia); progresso por cima do visualizador */
+.toast { z-index: 90; }
+.overlay { z-index: 58; }

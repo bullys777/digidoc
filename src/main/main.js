@@ -21,6 +21,17 @@ function sobDemanda(chave, carregar) {
   });
 }
 const pipeline = sobDemanda("pipeline", () => require("./pipeline"));
+// reconhecer o tipo do documento (opcional): OCR em portugues, carrega so quando usado
+const classificador = sobDemanda("classificar", () => {
+  const c = require("./classificar");
+  const unpacked = app.isPackaged ? path.join(process.resourcesPath, "app.asar.unpacked") : path.join(__dirname, "..", "..");
+  c.configurar({
+    core: path.join(unpacked, "node_modules", "tesseract.js", "node_modules", "tesseract.js-core"),
+    lang: path.join(unpacked, "assets", "tesseract"),
+    aprendizado: path.join(app.getPath("userData"), "aprendizado-tipos.json"),
+  });
+  return c;
+});
 const pdf = sobDemanda("pdf", () => require("./pdf"));
 const servidorCelular = sobDemanda("servidorCelular", () => require("./servidorCelular"));
 const QRCode = sobDemanda("qrcode", () => require("qrcode"));
@@ -71,6 +82,9 @@ app.on("second-instance", (_e, argv) => {
 
 // ---- modo compatibilidade: sem aceleracao de video (tela branca/preta em PC fraco, VM ou acesso remoto) ----
 if (cfg.semAceleracao) app.disableHardwareAcceleration();
+// o Windows marca a janela coberta por outra como "escondida" e o Chromium para de desenhar: o que
+// depende da tela (importar PDF, miniaturas) ficava parado ate a pessoa voltar pro DigiDoc
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 app.on("child-process-gone", (_e, d) => {
   // se a placa de video derrubar o app, liga o modo compatibilidade sozinho e reabre
   if (d.type === "GPU" && !cfg.semAceleracao && ["crashed", "abnormal-exit", "launch-failed", "integrity-failure"].includes(d.reason)) {
@@ -177,6 +191,7 @@ function criarJanela() {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true, nodeIntegration: false,
       webviewTag: true, // so pro cantinho (YouTube), travado em will-attach-webview
+      backgroundThrottling: false, // continua trabalhando (importar, ler texto) com a janela atras de outra
     },
   });
   // cantinho: o <webview> so abre YouTube, isolado (sem preload/node, sandbox) e numa sessao em
@@ -190,6 +205,16 @@ function criarJanela() {
   });
   // a janela perdeu o foco (Alt+Tab, clicou em outro programa): o cantinho se esconde
   win.on("blur", () => enviar("janela:blur"));
+  // Esc / Ctrl+Shift+Espaco com o cantinho aberto: esconde, venha a tecla de onde vier (com o foco
+  // dentro de um jogo/site a tecla pode chegar pela janela e nao pelo <webview>)
+  win.webContents.on("before-input-event", (ev, input) => {
+    if (!_cantinhoAberto || input.type !== "keyDown") return;
+    if (input.key === "Escape" || (input.control && input.shift && input.code === "Space")) {
+      ev.preventDefault();
+      if (win.isFullScreen()) win.setFullScreen(false);
+      enviar("cantinho:panico");
+    }
+  });
   win.removeMenu();
   let mostrou = false;
   const mostrar = () => {
@@ -284,7 +309,8 @@ function vigiarCanto(ligar, canto) {
     } catch {}
   }, 120);
 }
-ipcMain.handle("cantinho:estado", (_e, { aberto, canto } = {}) => { vigiarCanto(!!aberto, canto); return true; });
+let _cantinhoAberto = false;
+ipcMain.handle("cantinho:estado", (_e, { aberto, canto } = {}) => { _cantinhoAberto = !!aberto; vigiarCanto(!!aberto, canto); return true; });
 // apagar o progresso salvo dos jogos (o unico rastro que o cantinho deixa no PC)
 ipcMain.handle("cantinho:apagarJogos", async () => {
   try { await require("electron").session.fromPartition(PARTICAO_JOGOS).clearStorageData(); return true; } catch { return false; }
@@ -315,6 +341,7 @@ app.on("window-all-closed", () => app.quit());
 app.on("before-quit", () => {
   // so encerra o que chegou a ser carregado (nao carrega tesseract so pra fechar)
   try { if (_mods.orientacao) _mods.orientacao.encerrar(); } catch {}
+  try { if (_mods.classificar) _mods.classificar.encerrar(); } catch {}
   try { if (_mods.servidorCelular) _mods.servidorCelular.parar(); } catch {}
 });
 
@@ -343,14 +370,14 @@ ipcMain.handle("config:save", (_e, novo) => {
   }
   trocarCfg(novo); config.salvar(cfg); return true;
 });
-ipcMain.handle("config:reset", () => {
-  // o scanner de cada PC (a config viaja no pendrive) e o que cada aparelho tem nao sao "preferencias":
-  // restaurar o padrao nao apaga
-  const porPC = cfg.scanner && cfg.scanner.porPC, capacidades = cfg.scanner && cfg.scanner.capacidades;
-  trocarCfg(config.padraoResolvido());
-  if (porPC) cfg.scanner.porPC = porPC;
-  if (capacidades) cfg.scanner.capacidades = capacidades;
-  cfg.semAceleracao = compatDestePC(); config.salvar(cfg); return cfg;
+// "Restaurar padrao": so DEVOLVE os valores padrao pra tela mostrar; nada muda ate clicar em
+// "Salvar configuracoes" (antes salvava na hora, mesmo clicando Cancelar)
+ipcMain.handle("config:padrao", () => {
+  const p = config.padraoResolvido();
+  // o scanner de cada PC e o que cada aparelho tem nao sao "preferencias": continuam
+  if (cfg.scanner) { p.scanner.porPC = cfg.scanner.porPC || {}; p.scanner.capacidades = cfg.scanner.capacidades || {}; }
+  p.semAceleracao = compatDestePC();
+  return p;
 });
 ipcMain.handle("config:path", () => config.CONFIG_PATH);
 ipcMain.handle("app:reiniciar", () => { app.relaunch(); app.exit(0); });
@@ -387,13 +414,50 @@ ipcMain.handle("paginas:addArquivos", async (_e, { caminhos, colorido, ehFoto })
   return res;
 });
 
-// paginas que vem como bytes (paginas de um PDF importado, desenhadas na tela)
-ipcMain.handle("paginas:addBuffer", async (_e, { bytes, colorido } = {}) => {
+// paginas que vem como bytes (paginas de um PDF importado, desenhadas na tela).
+// semAjustes: pagina de um PDF que o proprio DigiDoc ja salvou (reabrir pra editar) — entra como
+// esta, sem tratar de novo, e mantem a cor se tiver
+ipcMain.handle("paginas:addBuffer", async (_e, { bytes, colorido, semAjustes } = {}) => {
   try {
     if (!bytes || !bytes.byteLength) return { erro: "vazio" };
-    return await registrarPagina(Buffer.from(bytes), { colorido: !!colorido, ehFoto: false });
+    const buf = Buffer.from(bytes);
+    if (!semAjustes) return await registrarPagina(buf, { colorido: !!colorido, ehFoto: false });
+    const id = "p" + ++seq;
+    const opts = { colorido: await pipeline.temCor(buf), ehFoto: false, giroFixo: 0, recorte: null, semAjustes: true };
+    const r = await pipeline.processarPagina(buf, opcoesPipeline(opts));
+    const p = { original: buf, opts, processado: r.buffer, meta: { w: r.width, h: r.height, giro: 0, incerto: false, digital: await digitalSegura(r.buffer) } };
+    paginas.set(id, p);
+    return resumoPagina(id, p, await pipeline.miniatura(r.buffer, cfg.tamanhoMiniatura));
   } catch (e) { return { erro: e.message }; }
 });
+
+// ---- reconhecer o tipo do documento (le o texto da pagina) ----
+ipcMain.handle("pagina:classificar", async (_e, { id } = {}) => {
+  const p = paginas.get(id);
+  if (!p) return { erro: "sumiu" };
+  try {
+    if (!classificador.disponivel()) return { erro: "Falta o leitor de texto em português (por.traineddata)." };
+    const r = await classificador.classificar(p.processado, cfg.tipos || [], { ehFoto: !!p.opts.ehFoto, reconhecimento: cfg.reconhecimento || {} });
+    p.meta.textoOCR = r.texto || ""; // guardado so na memoria, pra aprender se a pessoa corrigir
+    delete r.texto;
+    return r;
+  } catch (e) { return { erro: e.message }; }
+});
+// a pessoa corrigiu o tipo que o DigiDoc tinha marcado: aprende com o texto daquela pagina
+ipcMain.handle("tipo:aprender", (_e, { id, sigla } = {}) => {
+  const p = paginas.get(id) || lixeira.get(id);
+  if (p && p.meta.textoOCR && sigla) { try { classificador.aprender(p.meta.textoOCR, sigla); } catch {} }
+  return true;
+});
+// lista pra tela de Configuracoes > Reconhecimento (tipos/regra podem vir da tela, ainda nao salvos)
+ipcMain.handle("reconhecimento:familias", (_e, { tipos, reconhecimento } = {}) => {
+  try { return classificador.familias(tipos || cfg.tipos || [], reconhecimento || cfg.reconhecimento || {}); } catch { return []; }
+});
+ipcMain.handle("tipo:esquecer", () => { try { classificador.esquecerAprendizado(); } catch {} return true; });
+
+// texto copiado (botao "Colar" do nome do associado)
+ipcMain.handle("clipboard:texto", () => { try { return clipboard.readText() || ""; } catch { return ""; } });
+ipcMain.handle("clipboard:copiar", (_e, t) => { try { clipboard.writeText(String(t || "")); return true; } catch { return false; } });
 
 // le um PDF escolhido/arrastado pra tela desenhar as paginas (so .pdf, ate 300 MB)
 ipcMain.handle("arquivo:lerPdf", async (_e, caminho) => {
@@ -482,6 +546,8 @@ ipcMain.handle("paginas:restaurar", (_e, ids) => {
 ipcMain.handle("lixeira:purgar", (_e, ids) => { for (const id of ids || []) lixeira.delete(id); return true; });
 // limpar depois de salvar: some tudo da memoria (documento de associado nao fica guardado a toa)
 ipcMain.handle("paginas:limpar", () => { paginas.clear(); lixeira.clear(); return true; });
+// tira de vez so as paginas que foram salvas (as sem tipo, ou que chegaram durante o salvamento, ficam)
+ipcMain.handle("paginas:descartar", (_e, ids) => { for (const id of ids || []) { paginas.delete(id); lixeira.delete(id); } return true; });
 
 ipcMain.handle("pagina:previa", async (_e, { id, tamanho }) => {
   const p = paginas.get(id);
@@ -660,11 +726,18 @@ ipcMain.handle("scanner:escanear", async (_e, { origem, plano, colorido } = {}) 
 
 // ---- salvar PDF ----
 // modo "dossie": tudo num PDF. modo "documentos": grupos [{tipoSigla, ids:[...]}]
-ipcMain.handle("salvar:dossie", async (_e, { nomeAssociado, ids, nivel }) => {
+// nome de arquivo vindo da tela (editar documento reaberto): so o nome, sem pasta, terminando em .pdf
+const nomeArquivoSeguro = (n) => {
+  const b = path.win32.basename(String(n || ""));
+  return /^[^<>:"\/\\|?*\x00-\x1f]+\.pdf$/i.test(b) && !b.startsWith(".") ? b : null;
+};
+
+ipcMain.handle("salvar:dossie", async (_e, { nomeAssociado, ids, nivel, substituir, nomeArquivo }) => {
   try {
     const dir = files.pastaAssociado(cfgSaida(), nomeAssociado, true);
-    const nomeArq = files.montaNomeArquivo(cfg, { nomeAssociado, tipoSigla: cfg.siglaDossie, incluirNome: false });
-    const r = await salvarPDFs(dir, [{ nome: nomeArq, ids }], nivel || cfg.compressaoPadraoDossie);
+    const reaberto = substituir ? nomeArquivoSeguro(nomeArquivo) : null; // editando o PDF reaberto: grava por cima dele
+    const nomeArq = reaberto || files.montaNomeArquivo(cfg, { nomeAssociado, tipoSigla: cfg.siglaDossie, incluirNome: false });
+    const r = await salvarPDFs(dir, [{ nome: nomeArq, ids, substituir: !!reaberto }], nivel || cfg.compressaoPadraoDossie);
     registrarHistorico(nomeAssociado, "dossie", r);
     return r;
   } catch (e) {
@@ -672,11 +745,13 @@ ipcMain.handle("salvar:dossie", async (_e, { nomeAssociado, ids, nivel }) => {
   }
 });
 
-ipcMain.handle("salvar:documentos", async (_e, { nomeAssociado, grupos, nivel }) => {
+ipcMain.handle("salvar:documentos", async (_e, { nomeAssociado, grupos, nivel, substituir }) => {
   try {
     const dir = files.pastaAssociado(cfgSaida(), nomeAssociado, true);
     const lista = grupos.map((g) => ({
-      nome: files.montaNomeArquivo(cfg, { nomeAssociado, tipoSigla: g.tipoSigla, incluirNome: false }),
+      // so o grupo que veio de um PDF reaberto grava por cima dele; documento novo segue a regra normal
+      nome: (substituir && nomeArquivoSeguro(g.nomeArquivo)) || files.montaNomeArquivo(cfg, { nomeAssociado, tipoSigla: g.tipoSigla, incluirNome: false }),
+      substituir: !!(substituir && nomeArquivoSeguro(g.nomeArquivo)),
       ids: g.ids, colorido: g.colorido,
     }));
     const r = await salvarPDFs(dir, lista, nivel || cfg.compressaoPadraoDocumento);
@@ -847,38 +922,44 @@ function fazerBackup(caminho) {
   } catch (e) { enviar("progresso", { tipo: "scan", msg: "Aviso: falha no backup (" + e.message + ")" }); }
 }
 
+// item.substituir=true: grupo de um PDF reaberto pra editar (Recentes) — grava por cima do mesmo arquivo
 async function salvarPDFs(dir, lista, nivel) {
   const maxBytes = cfg.tamanhoMaxMB * 1024 * 1024;
-  const salvos = [];
+  const salvos = []; // cada um leva os ids das paginas: a tela so tira da lista o que foi salvo mesmo
+  const gravadosAgora = new Set(); // dois grupos no mesmo salvamento nunca gravam o mesmo arquivo
   for (const item of lista) {
     const pgs = item.ids.map((id) => {
       const p = paginas.get(id);
       return p ? { buffer: p.processado, width: p.meta.w, height: p.meta.h, dpiOrigem: cfg.scanner.resolucao || 200 } : null;
     }).filter(Boolean);
     if (!pgs.length) continue;
+    const ids = item.ids;
 
-    const dest = files.resolveDestino(dir, item.nome, cfg.seArquivoExiste);
+    let dest = files.resolveDestino(dir, item.nome, item.substituir ? "substituir" : cfg.seArquivoExiste);
+    // ex.: 3 paginas "avulsas" viram DOC.pdf cada uma — com "Substituir" uma apagava a outra
+    if (gravadosAgora.has(path.resolve(dest.caminho).toLowerCase())) dest = files.resolveDestino(dir, item.nome, "numerar");
     if (dest.perguntar) {
       const resp = dialog.showMessageBoxSync(win, {
         type: "question", buttons: ["Substituir", "Manter os dois (numerar)", "Cancelar"],
         defaultId: 1, cancelId: 2, title: "Arquivo ja existe",
         message: `Ja existe "${item.nome}" na pasta.`, detail: "O que deseja fazer?",
       });
-      if (resp === 2) { salvos.push({ nome: item.nome, cancelado: true }); continue; }
+      if (resp === 2) { salvos.push({ nome: item.nome, cancelado: true, ids }); continue; }
       if (resp === 1) {
         const d2 = files.resolveDestino(dir, item.nome, "numerar");
         dest.caminho = d2.caminho; dest.nome = d2.nome;
       }
     }
+    gravadosAgora.add(path.resolve(dest.caminho).toLowerCase());
     try {
       const r = await pdf.gerarPDF(pgs, dest.caminho, {
         maxBytes, nivel, onProgresso: (p) => enviar("progresso", { tipo: "pdf", ...p, nome: dest.nome }),
       });
       fazerBackup(r.caminho);
-      salvos.push({ nome: dest.nome, bytes: r.bytes, dpi: r.dpi, pb: r.pb, caminho: r.caminho, paginas: pgs.length });
+      salvos.push({ nome: dest.nome, bytes: r.bytes, dpi: r.dpi, pb: r.pb, caminho: r.caminho, paginas: pgs.length, ids });
     } catch (e) {
-      if (e.salvouAcimaDoLimite) { fazerBackup(e.caminho); salvos.push({ nome: dest.nome, bytes: e.bytes, caminho: e.caminho, aviso: e.message, paginas: pgs.length }); }
-      else salvos.push({ nome: item.nome, erro: e.message });
+      if (e.salvouAcimaDoLimite) { fazerBackup(e.caminho); salvos.push({ nome: dest.nome, bytes: e.bytes, caminho: e.caminho, aviso: e.message, paginas: pgs.length, ids }); }
+      else salvos.push({ nome: item.nome, erro: e.message, ids });
     }
   }
   // acoes pos-salvar
