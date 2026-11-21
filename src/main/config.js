@@ -79,7 +79,8 @@ const PADRAO = {
     clararFundo: true,     // deixa o fundo branco
     tirarPaginaBranca: true,
     recortarFolha: true,   // util nas fotos do iPhone (tira a mesa/fundo)
-    nitidez: true,         // realca o texto (sharpen leve)
+    nitidez: true,         // realca o texto (sharpen leve) — so nas paginas em cinza
+    corOriginal: true,     // pagina colorida sai com a cor do scanner, sem clarear/realcar (senao "estoura")
   },
 
   // ----- iPhone / celular -----

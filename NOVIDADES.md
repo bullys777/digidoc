@@ -3,6 +3,11 @@
 Cada versão nova começa com `## <versão>`. As linhas com `-` viram a lista de
 novidades que aparece no aviso de atualização dentro do app.
 
+## 0.3.1
+- Cor do próprio scanner: as páginas coloridas agora saem com as cores exatamente como o scanner mandou (antes ficavam estouradas)
+- Nova opção em Configurações > Ajustes da imagem: "Manter a cor do scanner" (ligada por padrão)
+- "Melhorar nitidez" passa a valer só para páginas em cinza (em cor criava halos)
+
 ## 0.3.0
 - Painel de produção (F3): quantos associados e PDFs hoje, ontem, na semana e no total, letra atual, gráfico por dia e por letra, e quem ainda não tem cada documento
 - Meta de associados por dia, com barrinha de progresso no rodapé

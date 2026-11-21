@@ -1135,7 +1135,8 @@ function montarFormConfig(c) {
       ${linhaSw("cfgClarar", "Clarear o fundo", "deixa o fundo branco", c.ajustes.clararFundo)}
       ${linhaSw("cfgTirarBranca", "Tirar página em branco", "", c.ajustes.tirarPaginaBranca)}
       ${linhaSw("cfgRecortar", "Recortar a folha (fotos)", "tira a mesa/fundo nas fotos", c.ajustes.recortarFolha)}
-      ${linhaSw("cfgNitidez", "Melhorar nitidez", "realça o texto", c.ajustes.nitidez)}
+      ${linhaSw("cfgNitidez", "Melhorar nitidez", "realça o texto (só nas páginas em cinza)", c.ajustes.nitidez)}
+      ${linhaSw("cfgCorOriginal", "Manter a cor do scanner", "páginas coloridas saem com as cores exatamente como o scanner mandou, sem clarear nem realçar", c.ajustes.corOriginal !== false)}
     </div>
 
     <div class="cfg-grupo" id="gScanner">
@@ -1353,6 +1354,7 @@ function coletarConfig() {
   c.ajustes.tirarPaginaBranca = $("#cfgTirarBranca").checked;
   c.ajustes.recortarFolha = $("#cfgRecortar").checked;
   c.ajustes.nitidez = $("#cfgNitidez").checked;
+  c.ajustes.corOriginal = $("#cfgCorOriginal").checked;
   c.scanner.resolucao = parseInt($("#cfgDpi").value) || 200;
   c.scanner.cor = $("#cfgCor").value;
   c.scanner.frenteEVerso = $("#cfgDuplex").checked;

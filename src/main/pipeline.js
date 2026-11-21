@@ -179,22 +179,33 @@ async function processarPagina(entrada, opcoes = {}) {
   let proc = sharp(buf);
   if (!opcoes.colorido) proc = proc.grayscale();
 
+  // pagina colorida com "manter a cor do scanner" (padrao): as cores ficam exatamente como o
+  // scanner mandou. Esticar o contraste em cor queima os claros e satura demais (fica "estourado").
+  const manterCor = !!opcoes.colorido && aj.corOriginal !== false;
+
   // clarear fundo (normalizacao de niveis)
-  if (aj.clararFundo) {
+  if (aj.clararFundo && !manterCor) {
     const g = await sharp(buf).grayscale().resize(300, 420, { fit: "inside" }).raw().toBuffer();
-    const preto = percentil(g, 2);
-    const branco = percentil(g, opcoes.colorido ? 92 : 80);
-    if (branco - preto > 40) {
-      // mapeia [preto..branco] -> [0..255]
-      const mult = 255 / (branco - preto);
-      proc = proc.linear(mult, -preto * mult);
+    if (opcoes.colorido) {
+      // colorido sem manter a cor: so leva o papel amarelado/cinza pro branco, com UM multiplicador
+      // (nao escurece o preto nem satura as cores) e cortando so os 2% mais claros
+      const branco = percentil(g, 98);
+      if (branco > 140 && branco < 250) proc = proc.linear(255 / branco, 0);
     } else {
-      proc = proc.normalise();
+      const preto = percentil(g, 2);
+      const branco = percentil(g, 80);
+      if (branco - preto > 40) {
+        // mapeia [preto..branco] -> [0..255]
+        const mult = 255 / (branco - preto);
+        proc = proc.linear(mult, -preto * mult);
+      } else {
+        proc = proc.normalise();
+      }
     }
   }
 
-  // nitidez: realca as bordas do texto (sharpen leve)
-  if (aj.nitidez) proc = proc.sharpen({ sigma: 1, m1: 0.5, m2: 2 });
+  // nitidez: realca as bordas do texto (sharpen leve). Em cor so cria halo: so no cinza.
+  if (aj.nitidez && !opcoes.colorido) proc = proc.sharpen({ sigma: 1, m1: 0.5, m2: 2 });
 
   let saida = await proc.toBuffer();
 
