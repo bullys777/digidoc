@@ -3,6 +3,15 @@
 Cada versão nova começa com `## <versão>`. As linhas com `-` viram a lista de
 novidades que aparece no aviso de atualização dentro do app.
 
+## 0.7.0
+- Lista de conferência em ordem alfabética, letra por letra (A, B, C...), com o dia em que cada associado passou
+- Planilha da lista (Excel): "DigiDoc - Lista de conferencia.xlsx", também por letra, com filtro — botão 📗 Planilha no Histórico e nas Configurações
+- A lista se atualiza sozinha: ao salvar e quando aparece pasta de associado nova (até criada ou copiada à mão)
+- Nomes dos documentos no padrão da equipe: RG, CNH, CPF, ENDERECO, PROPOSTA, NASC, CASAMENTO, NEG, TERMO DE COMPROMISSO, FICHA, AUTO CONTA, AUTO CARTAO, CONTA, TCO, CAP, CARTA APRESENTACAO, INADIMPLENCIA, DEC UNIAO ESTAVEL
+- O dossiê sai como "DOSSIE COMPLETO.pdf" e os nomes usam espaço em vez de _ (dá pra voltar em Configurações > Pastas e nomes)
+- Painel e "Ainda falta" reconhecem os nomes antigos das pastas: "COMP. ENDEREÇO" conta como ENDERECO, "RG MARIA" como RG, "DOSSIE COMPLETO_compressed" como dossiê
+- Painel mostra os arquivos que saíram do scanner sem nome (ex.: "2026-11-05 (1).pdf") como "arquivo do scanner"
+
 ## 0.6.3
 - Configurações > Opções avançadas: diagnóstico para o desenvolvedor (com senha). Gera um texto só com a estrutura da pasta dos digitalizados (quantas pastas, como os arquivos são nomeados), sem nomes de associados e sem abrir nenhum documento
 

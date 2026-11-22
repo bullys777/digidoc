@@ -14,10 +14,11 @@ const diaLocal = (ms) => {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
-// "RG_2.pdf" -> "RG" (o _2 e so o numero de quando ja existia)
-const siglaDoArquivo = (f) => f.replace(/\.pdf$/i, "").replace(/_\d+$/, "").toUpperCase();
-// a sigla do tipo como ela vira nome de arquivo (sem acento, espaco vira _) — pra comparar com o arquivo
-const siglaArquivo = (s) => files.sanitizaBase(String(s || ""), { removerAcentosArquivo: true, maiusculasNomeArquivo: true });
+const nomesDoc = require("../shared/nomesdoc");
+// "RG_2.pdf" -> "RG", "COMP. ENDEREÇO.pdf" -> "COMP_ENDERECO" (sem acento, espaco/ponto viram _)
+const siglaDoArquivo = (f) => nomesDoc.chaveArquivo(f);
+// a sigla do tipo do mesmo jeito — pra comparar com o arquivo
+const siglaArquivo = (s) => nomesDoc.chave(s);
 
 async function lerDir(d) {
   try { return await fs.promises.readdir(d, { withFileTypes: true }); } catch { return []; }
@@ -53,6 +54,15 @@ async function varrer(pastaSaida) {
 async function calcular(cfg) {
   const inicio = Date.now();
   const pessoas = await varrer(cfg.pastaSaida);
+  // cada PDF conta pro tipo que ele e, mesmo escrito de outro jeito ("COMP. ENDEREÇO" = ENDERECO,
+  // "RG MARIA" = RG, "DOSSIE" = DOSSIE COMPLETO)
+  const tiposConhecidos = [...(cfg.tipos || []), { sigla: cfg.siglaDossie || "DOSSIE COMPLETO" }];
+  for (const p of pessoas) for (const d of p.docs) {
+    const t = nomesDoc.tipoDoArquivo(d.nome, tiposConhecidos);
+    if (t) d.sigla = siglaArquivo(t.sigla);
+    // "2026-11-05 (1).pdf": arquivo que saiu do scanner e ninguem renomeou
+    else if (/^\d{4}_\d{2}_\d{2}(_\d+)*$/.test(d.sigla)) d.sigla = "ARQUIVO_DO_SCANNER";
+  }
   const hoje = diaLocal(Date.now());
   const ontem = diaLocal(Date.now() - 864e5);
   const porLetra = {}, porTipo = {}, porDia = {};
@@ -91,7 +101,7 @@ async function calcular(cfg) {
     const s = siglaArquivo(t.sigla);
     return { sigla: s, nome: t.nome, tem: pessoas.filter((p) => p.siglas.includes(s)).length };
   });
-  const dossie = siglaArquivo(cfg.siglaDossie || "DOSSIE");
+  const dossie = siglaArquivo(cfg.siglaDossie || "DOSSIE COMPLETO");
 
   cache = {
     em: Date.now(), levouMs: Date.now() - inicio, pasta: cfg.pastaSaida,

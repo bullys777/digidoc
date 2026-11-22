@@ -449,7 +449,8 @@ window.Painel = (() => {
       // tipos
       const tipos = Object.entries(d.porTipo).sort((a, b) => b[1] - a[1]);
       const maxTipo = Math.max(1, ...tipos.map((t) => t[1]));
-      const nomeSigla = (s) => { const t = (cfg.tipos || []).find((x) => String(x.sigla).toUpperCase() === s); return t ? t.nome : s === String(cfg.siglaDossie || "DOSSIE").toUpperCase() ? "Dossiê completo" : s; };
+      const ch = window.NomesDoc.chave;
+      const nomeSigla = (s) => { const t = (cfg.tipos || []).find((x) => ch(x.sigla) === s); return t ? t.nome : s === ch(cfg.siglaDossie || "DOSSIE COMPLETO") ? "Dossiê completo" : s.replace(/_/g, " "); };
       const base = d.total.pessoas || 1;
 
       J.q(".modal-corpo").innerHTML = `
@@ -545,7 +546,7 @@ window.Painel = (() => {
       J.q("#pnLista").innerHTML = lista.length ? `<table class="pn-tabela"><thead><tr><th>Associado</th><th>Letra</th><th>Documentos</th><th>Último</th><th></th></tr></thead><tbody>
         ${lista.slice(0, max).map((p, i) => `<tr>
           <td><b>${esc(p.nome)}</b></td><td>${esc(p.letra)}</td>
-          <td>${p.siglas.length ? p.siglas.map((s) => `<span class="pn-sigla">${esc(s)}</span>`).join("") : '<span class="sub">vazia</span>'}</td>
+          <td>${p.siglas.length ? p.siglas.map((s) => `<span class="pn-sigla">${esc(String(s).replace(/_/g, " "))}</span>`).join("") : '<span class="sub">vazia</span>'}</td>
           <td class="sub">${horaOuData(p.ultimo)}</td>
           <td class="pn-acoes"><button class="mini" data-usar="${i}" title="Pôr este nome no campo Associado">Usar nome</button><button class="mini" data-pasta="${i}" title="Abrir a pasta">📂</button></td></tr>`).join("")}
         </tbody></table>${lista.length > max ? `<p class="sub">Mostrando ${max} de ${fmtNum(lista.length)} — refine a busca.</p>` : ""}`
@@ -572,8 +573,9 @@ window.Painel = (() => {
 // =====================================================================
 async function abrirHistorico() {
   const J = abrirJanela({ titulo: "🕘 Histórico — salvos neste PC", largura: 720, corpo: `<div class="painel-carregando"><div class="spinner"></div></div>`,
-    rodape: `<button class="mini perigo" id="hiLimpar">Limpar histórico</button><span class="flex1"></span><button class="btn-sec" id="hiConferencia" title="Lista com o nome de todos que já passaram pela digitalização">📄 Lista de conferência</button><button class="btn-sec" id="hiPainel">📊 Painel de produção</button>` });
+    rodape: `<button class="mini perigo" id="hiLimpar">Limpar histórico</button><span class="flex1"></span><button class="btn-sec" id="hiConferencia" title="Lista com o nome de todos que já passaram pela digitalização (TXT, por letra)">📄 Lista de conferência</button><button class="btn-sec" id="hiConfPlanilha" title="A mesma lista em planilha (Excel), por letra">📗 Planilha</button><button class="btn-sec" id="hiPainel">📊 Painel de produção</button>` });
   J.q("#hiConferencia").onclick = () => window.api.conferenciaAbrir();
+  J.q("#hiConfPlanilha").onclick = () => window.api.conferenciaAbrir(null, "planilha");
   async function desenhar() {
     const h = await window.api.historico();
     if (!J.ov.isConnected) return;

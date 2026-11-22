@@ -107,7 +107,7 @@ const api = {
   // lista de conferencia
   conferenciaInfo: () => ipcRenderer.invoke("conferencia:info"),
   conferenciaEscolherPasta: (sugerida) => ipcRenderer.invoke("conferencia:escolherPasta", sugerida),
-  conferenciaAbrir: (pasta) => ipcRenderer.invoke("conferencia:abrir", pasta),
+  conferenciaAbrir: (pasta, qual) => ipcRenderer.invoke("conferencia:abrir", { pasta: pasta || null, qual: qual || "lista" }),
   conferenciaEscanear: () => ipcRenderer.invoke("conferencia:escanear"),
   conferenciaImportar: (achados, pasta) => ipcRenderer.invoke("conferencia:importar", { achados, pasta }),
   devDiagnostico: (senha) => ipcRenderer.invoke("dev:diagnostico", { senha }),

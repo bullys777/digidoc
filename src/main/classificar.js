@@ -48,9 +48,9 @@ const FAMILIAS = [
   { id: "rg", nome: "RG / Carteira de identidade", padrao: "RG" },
   { id: "cnh", nome: "CNH (carteira de motorista)", padrao: "CNH" },
   { id: "cpf", nome: "CPF", padrao: "CPF" },
-  { id: "residencia", nome: "Comprovante de endereço (conta de luz, água, telefone…)", padrao: "COMP_RES" },
-  { id: "nascimento", nome: "Certidão de nascimento", padrao: "CERT_NASC" },
-  { id: "casamento", nome: "Certidão de casamento", padrao: "CERT_CAS" },
+  { id: "residencia", nome: "Comprovante de endereço (conta de luz, água, telefone…)", padrao: "ENDERECO" },
+  { id: "nascimento", nome: "Certidão de nascimento", padrao: "NASC" },
+  { id: "casamento", nome: "Certidão de casamento", padrao: "CASAMENTO" },
   { id: "ficha", nome: "Ficha de inscrição / cadastro", padrao: "FICHA" },
   { id: "proposta", nome: "Proposta (admissão, adesão)", padrao: "PROPOSTA" },
   { id: "renda", nome: "Comprovante de renda (holerite, contracheque)", padrao: "RENDA" },
@@ -231,7 +231,8 @@ async function classificar(buf, tipos, { ehFoto = false, reconhecimento = null }
   for (const t of tipos) {
     if (pont.some((p) => p.t.sigla === t.sigla)) continue;
     const nome = normaliza(t.nome).trim();
-    if (nome.length < 4) continue;
+    // palavra sozinha e curta ("Conta") aparece em todo documento: so conta nome mais especifico
+    if (nome.length < 4 || (!nome.includes(" ") && nome.length < 8)) continue;
     let pontos = tem(nome) ? 7 : 0; const achou = pontos ? [nome.toLowerCase()] : [];
     for (const w of nome.split(" ")) if (w.length >= 6 && tem(w)) { pontos += 1; achou.push(w.toLowerCase()); }
     pont.push({ t, d: { t }, pontos, achou });

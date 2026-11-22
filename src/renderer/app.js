@@ -322,16 +322,12 @@ async function onAssociadoMudou() {
 }
 
 // um tipo ja foi salvo pra este associado?
-// a sigla como ela vira nome de arquivo (igual ao files.js: sem acento, espaco vira _, maiuscula).
-// Comparar a sigla "crua" com o nome do arquivo falhava em sigla com acento ou espaco
-function siglaArquivo(s) {
-  return String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
-    .replace(/\s+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").toUpperCase();
-}
-const siglaDoNomeArquivo = (f) => String(f || "").toUpperCase().replace(/\.PDF$/, "").replace(/_\d+$/, "");
+// sigla e nome do arquivo comparados do mesmo jeito (sem acento, espaco/ponto/_ iguais, maiuscula),
+// e valem os outros jeitos de escrever ("COMP. ENDEREÇO" = ENDERECO, "RG MARIA" = RG) — src/shared/nomesdoc.js
+const siglaArquivo = (s) => window.NomesDoc.chave(s);
+const siglaDoNomeArquivo = (f) => window.NomesDoc.chaveArquivo(f);
 function tipoJaSalvo(sigla) {
-  const alvo = siglaArquivo(sigla);
-  return docsAssoc.some((f) => siglaDoNomeArquivo(f) === alvo);
+  return docsAssoc.some((f) => window.NomesDoc.arquivoEhDoTipo(f, sigla));
 }
 
 function primeiraLetra(nome) {
@@ -1331,7 +1327,7 @@ function montarFormConfig(c) {
 
   <div class="cfg-grupo" id="gConferencia">
     <h3>Lista de conferência</h3>
-    ${linhaSw("cfgConfAtivo", "Anotar cada associado salvo na lista", "um arquivo TXT organizado por data com o nome de cada associado (exatamente como está escrito) que já passou pela digitalização. Só nomes — nenhum documento vai pra lista.", !(c.conferencia && c.conferencia.ativo === false))}
+    ${linhaSw("cfgConfAtivo", "Anotar cada associado na lista", "um TXT e uma planilha (Excel) em ordem alfabética, letra por letra, com o nome de cada associado (como está na pasta) e o dia em que passou. Atualiza sozinha: ao salvar e quando aparece pasta de associado nova, até as criadas à mão. Só nomes — nenhum documento vai pra lista.", !(c.conferencia && c.conferencia.ativo === false))}
     <div class="cfg-linha"><label class="rot">Pasta da lista<span class="sub" id="cfgConfPastaTxt">${esc((c.conferencia && c.conferencia.pasta) || (confInfo && confInfo.padrao) || "")}</span></label>
       <button class="btn-sec" id="btnConfPasta">Mudar…</button></div>
     ${confInfo && confInfo.nuvens && confInfo.nuvens.length ? `<div class="cfg-linha conf-nuvens"><label class="rot">Guardar na nuvem<span class="sub">usa a pasta do serviço que já sincroniza neste PC: a lista fica <b>privada</b> na sua conta (ninguém vê, a não ser que você compartilhe)</span></label>
@@ -1339,6 +1335,7 @@ function montarFormConfig(c) {
       `<p class="sub" style="margin:-2px 0 8px">Pra guardar na nuvem: instale o OneDrive ou o Google Drive para computador e escolha uma pasta dele em "Mudar…" — a lista sincroniza sozinha e fica privada na sua conta.</p>`}
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn-sec" id="btnConfAbrir">📄 Abrir a lista</button>
+      <button class="btn-sec" id="btnConfPlanilha">📊 Abrir a planilha</button>
       <button class="btn-sec" id="btnConfImportar">📥 Importar pastas já digitalizadas…</button>
       <span class="sub">${confInfo && confInfo.total ? `${confInfo.total.toLocaleString("pt-BR")} associado(s) na lista` : "lista ainda vazia"}</span>
     </div>
@@ -1387,7 +1384,8 @@ function montarFormConfig(c) {
           <option value="original" ${c.formatoNomeAssociado === "original" ? "selected" : ""}>como digitado</option>
         </select></div>
       ${linhaSw("cfgRemAcentoPasta", "Tirar acentos da pasta", "", c.removerAcentosPasta)}
-      <div class="cfg-linha"><label class="rot">Sigla do dossiê completo</label><input type="text" id="cfgSiglaDossie" value="${esc(c.siglaDossie)}"></div>
+      <div class="cfg-linha"><label class="rot">Nome do dossiê completo<span class="sub">nome do arquivo no modo dossiê (ex.: DOSSIE COMPLETO.pdf)</span></label><input type="text" id="cfgSiglaDossie" value="${esc(c.siglaDossie)}"></div>
+      ${linhaSw("cfgEspacoNome", "Espaço entre as palavras do nome do arquivo", "TERMO DE COMPROMISSO.pdf (desligado: TERMO_DE_COMPROMISSO.pdf)", c.espacoNoNomeArquivo !== false)}
       <div class="cfg-linha"><label class="rot">Compressão no documento por documento</label>
         <select id="cfgCompDoc">${nivelOpts(c.compressaoPadraoDocumento)}</select></div>
     </div>
@@ -1508,6 +1506,7 @@ function bindConfigDinamico() {
   $("#btnConfPasta").onclick = () => usarPastaConf();
   $$("[data-nuvem]").forEach((b) => { b.onclick = () => usarPastaConf(confInfo.nuvens[+b.dataset.nuvem].pasta); });
   $("#btnConfAbrir").onclick = () => window.api.conferenciaAbrir(_confPastaEscolhida || null);
+  $("#btnConfPlanilha").onclick = () => window.api.conferenciaAbrir(_confPastaEscolhida || null, "planilha");
   $("#btnConfImportar").onclick = () => { if (window.Conferencia) window.Conferencia.importar(_confPastaEscolhida || null); };
   $("#btnEscolherPasta").onclick = async () => {
     const p = await window.api.escolherPastaSaida();
@@ -1631,7 +1630,8 @@ function coletarConfig() {
   c.formatoPastaLetra = $("#cfgFormatoLetra").value || "Letra {letra}";
   c.formatoNomeAssociado = $("#cfgFormatoNome").value;
   c.removerAcentosPasta = $("#cfgRemAcentoPasta").checked;
-  c.siglaDossie = $("#cfgSiglaDossie").value || "DOSSIE";
+  c.siglaDossie = $("#cfgSiglaDossie").value.trim() || "DOSSIE COMPLETO";
+  c.espacoNoNomeArquivo = $("#cfgEspacoNome").checked;
   c.tamanhoMaxMB = parseFloat($("#cfgMaxMB").value) || 2;
   c.maxCaracteresNome = parseInt($("#cfgMaxCar").value) || 40;
   c.extensaoContaNoLimite = $("#cfgExtConta").checked;

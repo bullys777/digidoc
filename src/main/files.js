@@ -113,23 +113,27 @@ function pastaAssociado(cfg, nome, criar = false) {
 }
 
 // ----- nome do arquivo (com limite de 40 caracteres) -----
+// separador das palavras no nome do arquivo: espaco ("TERMO DE COMPROMISSO.pdf", como a equipe
+// ja escreve) ou _ ("TERMO_DE_COMPROMISSO.pdf", o jeito antigo do DigiDoc)
+const separador = (cfg) => (cfg && cfg.espacoNoNomeArquivo === false ? "_" : " ");
 function sanitizaBase(s, cfg) {
   let v = s;
   if (cfg.removerAcentosArquivo) v = tiraAcentos(v);
-  v = v.replace(INVALIDOS, "_").replace(/\s+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+  const sep = separador(cfg);
+  v = v.replace(INVALIDOS, "_").replace(/[\s_]+/g, sep).trim().replace(/^_+|_+$/g, "");
   if (cfg.maiusculasNomeArquivo) v = v.toUpperCase();
   return v;
 }
 
-function abrevia(nomeAssociado, limite) {
+function abrevia(nomeAssociado, limite, sep = "_") {
   // tenta encurtar o nome do associado mantendo primeiro e ultimo e inicial dos meios
-  let partes = nomeAssociado.split("_").filter((p) => p && !PREPOSICOES.has(p.toUpperCase()));
+  let partes = nomeAssociado.split(/[ _]+/).filter((p) => p && !PREPOSICOES.has(p.toUpperCase()));
   if (partes.length >= 3) {
     partes = [partes[0], ...partes.slice(1, -1).map((p) => p[0]), partes[partes.length - 1]];
   }
-  let v = partes.join("_");
-  if (v.length > limite && partes.length >= 2) v = partes[0] + "_" + partes[partes.length - 1];
-  if (v.length > limite) v = v.slice(0, Math.max(1, limite)).replace(/_+$/, "");
+  let v = partes.join(sep);
+  if (v.length > limite && partes.length >= 2) v = partes[0] + sep + partes[partes.length - 1];
+  if (v.length > limite) v = v.slice(0, Math.max(1, limite)).replace(/[ _]+$/, "");
   return v;
 }
 
@@ -142,13 +146,14 @@ function montaNomeArquivo(cfg, { nomeAssociado, tipoSigla, sufixo = "", incluirN
   let tipo = sanitizaBase(cfg.formatoNomeArquivo.replace("{tipo}", tipoSigla || "DOC"), cfg) + (sufixo || "");
 
   if (!incluirNome) {
-    let base = tipo.slice(0, Math.max(1, limite - descontoExt));
+    let base = tipo.slice(0, Math.max(1, limite - descontoExt)).trim();
     return base + ext;
   }
-  const nome = sanitizaBase(nomeAssociado || "SEM_NOME", cfg);
-  const espaco = limite - descontoExt - tipo.length - 1; // 1 pro "_"
-  const nomeCurto = nome.length > espaco ? abrevia(nome, Math.max(1, espaco)) : nome;
-  return `${nomeCurto}_${tipo}`.slice(0, Math.max(1, limite - descontoExt)) + ext;
+  const sep = separador(cfg);
+  const nome = sanitizaBase(nomeAssociado || "SEM NOME", cfg);
+  const espaco = limite - descontoExt - tipo.length - 1; // 1 pro separador
+  const nomeCurto = nome.length > espaco ? abrevia(nome, Math.max(1, espaco), sep) : nome;
+  return `${nomeCurto}${sep}${tipo}`.slice(0, Math.max(1, limite - descontoExt)).trim() + ext;
 }
 
 // resolve conflito de nome conforme a config; retorna caminho final a usar, ou null se "perguntar"

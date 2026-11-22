@@ -337,6 +337,7 @@ app.whenReady().then(async () => {
   }
   criarSplash();
   criarJanela();
+  iniciarSincConferencia();
 });
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", () => {
@@ -369,7 +370,10 @@ ipcMain.handle("config:save", (_e, novo) => {
     novo.scanner.dispositivo = cfg.scanner.dispositivo;
     delete novo.scanner.aparelho; delete novo.scanner.ultimoAuto;
   }
-  trocarCfg(novo); config.salvar(cfg); return true;
+  trocarCfg(novo); config.salvar(cfg);
+  // pode ter mudado a pasta principal ou a da lista: confere a lista de novo
+  try { vigiarPastaPrincipal(); agendarSincConferencia(1500); } catch {}
+  return true;
 });
 // "Restaurar padrao": so DEVOLVE os valores padrao pra tela mostrar; nada muda ate clicar em
 // "Salvar configuracoes" (antes salvava na hora, mesmo clicando Cancelar)
@@ -777,7 +781,8 @@ function registrarHistorico(associado, modoSalvo, r) {
     const arquivos = (r.salvos || []).filter((s) => s.caminho && !s.erro && !s.cancelado)
       .map((s) => ({ nome: s.nome, caminho: s.caminho, bytes: s.bytes || 0, paginas: s.paginas || 0 }));
     if (!arquivos.length) return;
-    anotarNaConferencia(associado);
+    // na lista vai o nome como ficou na pasta do associado (igual as pastas que ja existem)
+    anotarNaConferencia((r.pasta && path.basename(r.pasta)) || associado);
     const h = lerHistorico();
     h.unshift({ quando: new Date().toISOString(), associado: String(associado || "").trim(), modo: modoSalvo, pasta: r.pasta || "", arquivos });
     fs.mkdirSync(path.dirname(HISTORICO), { recursive: true });
@@ -793,6 +798,32 @@ function anotarNaConferencia(associado) {
   try { conferencia.registrar(pastaConferencia(), associado); }
   catch (e) { enviar("aviso", `Não consegui anotar na lista de conferência (${e.message}). A pasta da lista está acessível?`); }
 }
+// a lista acompanha as pastas: associado novo (salvo no DigiDoc ou pasta criada/copiada a mao)
+// entra sozinho. Confere ao abrir o DigiDoc, quando aparece pasta nova e a cada 3 minutos.
+let _sincTimer = null, _sincWatcher = null, _sincRaiz = "";
+function sincronizarConferencia() {
+  if (cfg.conferencia && cfg.conferencia.ativo === false) return null;
+  try { return conferencia.sincronizar(pastaConferencia(), cfgSaida().pastaSaida); } catch { return null; }
+}
+function agendarSincConferencia(ms = 4000) { clearTimeout(_sincTimer); _sincTimer = setTimeout(sincronizarConferencia, ms); }
+function vigiarPastaPrincipal() {
+  const raiz = cfgSaida().pastaSaida;
+  if (raiz === _sincRaiz && _sincWatcher) return;
+  try { if (_sincWatcher) _sincWatcher.close(); } catch {}
+  _sincWatcher = null; _sincRaiz = raiz;
+  try {
+    _sincWatcher = fs.watch(raiz, { recursive: true }, (_tipo, arq) => {
+      // so interessa pasta nova/renomeada (nao cada PDF salvo, nem a propria lista)
+      if (arq && /\.(pdf|salvando|tmp|json|txt|xlsx|jpe?g|png)$/i.test(arq)) return;
+      agendarSincConferencia(5000);
+    });
+    _sincWatcher.on("error", () => { try { _sincWatcher.close(); } catch {} _sincWatcher = null; });
+  } catch { _sincWatcher = null; } // pasta de rede sem aviso de mudanca: fica a conferencia a cada 3 min
+}
+function iniciarSincConferencia() {
+  setTimeout(() => { vigiarPastaPrincipal(); sincronizarConferencia(); }, 6000);
+  setInterval(() => { vigiarPastaPrincipal(); sincronizarConferencia(); }, 3 * 60 * 1000);
+}
 ipcMain.handle("conferencia:info", () => {
   try { return Object.assign(conferencia.resumo(pastaConferencia()), { ativo: !(cfg.conferencia && cfg.conferencia.ativo === false), nuvens: conferencia.nuvens(), padrao: path.join(app.getPath("documents"), "DigiDoc - Conferencia") }); }
   catch (e) { return { erro: e.message, nuvens: [] }; }
@@ -802,7 +833,7 @@ function levarLista(de, para) {
   try {
     if (!de || !para || path.resolve(de) === path.resolve(para)) return;
     fs.mkdirSync(para, { recursive: true });
-    for (const n of [conferencia.NOME_TXT, conferencia.NOME_TXT.replace(".txt", " (dados).json")]) {
+    for (const n of [conferencia.NOME_TXT, conferencia.NOME_DADOS, conferencia.NOME_XLSX]) {
       const a = path.join(de, n), b = path.join(para, n);
       if (fs.existsSync(a) && !fs.existsSync(b)) fs.copyFileSync(a, b);
     }
@@ -818,15 +849,16 @@ ipcMain.handle("conferencia:escolherPasta", async (_e, sugerida) => {
   levarLista(pastaConferencia(), destino);
   return destino;
 });
-ipcMain.handle("conferencia:abrir", (_e, pasta) => {
+ipcMain.handle("conferencia:abrir", (_e, arg) => {
+  const { pasta, qual } = arg && typeof arg === "object" ? arg : { pasta: arg };
   try {
     const p = pasta || pastaConferencia();
-    const txt = path.join(p, conferencia.NOME_TXT);
-    // antes de abrir, puxa sozinho os associados das pastas que ja existem na pasta principal
+    // antes de abrir, confere as pastas que ja existem na pasta principal
     // (Pasta principal > Letra A, Letra B... > pasta de cada socio). Quem ja esta nao repete.
-    try { conferencia.importar(p, conferencia.escanear([cfgSaida().pastaSaida])); }
-    catch { if (!fs.existsSync(txt)) conferencia.importar(p, []); }
-    shell.openPath(txt);
+    try { conferencia.sincronizar(p, cfgSaida().pastaSaida); } catch {}
+    const arq = path.join(p, qual === "planilha" ? conferencia.NOME_XLSX : conferencia.NOME_TXT);
+    if (!fs.existsSync(arq)) { try { conferencia.importar(p, []); } catch {} }
+    shell.openPath(arq);
     return true;
   } catch (e) { return false; }
 });

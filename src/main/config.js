@@ -117,20 +117,59 @@ const PADRAO = {
   semAceleracao: false,    // modo compatibilidade: desliga a aceleracao de video (tela branca/preta em PC fraco)
 
   // ----- tipos de documento (nome, sigla, tecla de atalho, cor) -----
-  tipos: [
-    { nome: "RG / Identidade", sigla: "RG", tecla: "1", colorido: false },
-    { nome: "CPF", sigla: "CPF", tecla: "2", colorido: false },
-    { nome: "Comprovante de residencia", sigla: "COMP_RES", tecla: "3", colorido: false },
-    { nome: "Certidao de nascimento", sigla: "CERT_NASC", tecla: "4", colorido: false },
-    { nome: "Certidao de casamento", sigla: "CERT_CAS", tecla: "5", colorido: false },
-    { nome: "Ficha de inscricao", sigla: "FICHA", tecla: "6", colorido: false },
-    { nome: "Foto 3x4", sigla: "FOTO", tecla: "7", colorido: true },
-    { nome: "Outros", sigla: "DOC", tecla: "8", colorido: false },
-  ],
-  siglaDossie: "DOSSIE", // nome do arquivo no modo dossie completo
+  // os nomes que a equipe ja usa nas pastas (RG, CNH, ENDERECO, PROPOSTA, NASC...)
+  tipos: TIPOS_PADRAO(),
+  siglaDossie: "DOSSIE COMPLETO", // nome do arquivo no modo dossie completo
+  espacoNoNomeArquivo: true,      // "TERMO DE COMPROMISSO.pdf" (false = "TERMO_DE_COMPROMISSO.pdf")
 
-  _versao: 2,
+  _versao: 3,
 };
+
+function TIPOS_PADRAO() {
+  return [
+    { nome: "RG / Identidade", sigla: "RG", tecla: "1", colorido: false },
+    { nome: "CNH", sigla: "CNH", tecla: "2", colorido: false },
+    { nome: "CPF", sigla: "CPF", tecla: "3", colorido: false },
+    { nome: "Comprovante de endereço", sigla: "ENDERECO", tecla: "4", colorido: false },
+    { nome: "Proposta", sigla: "PROPOSTA", tecla: "5", colorido: false },
+    { nome: "Certidão de nascimento", sigla: "NASC", tecla: "6", colorido: false },
+    { nome: "Certidão de casamento", sigla: "CASAMENTO", tecla: "7", colorido: false },
+    { nome: "Negativa", sigla: "NEG", tecla: "8", colorido: false },
+    { nome: "Termo de compromisso", sigla: "TERMO DE COMPROMISSO", tecla: "9", colorido: false },
+    { nome: "Ficha de sócio", sigla: "FICHA", tecla: "0", colorido: false },
+    { nome: "Auto conta", sigla: "AUTO CONTA", tecla: "", colorido: false },
+    { nome: "Auto cartão", sigla: "AUTO CARTAO", tecla: "", colorido: false },
+    { nome: "Conta", sigla: "CONTA", tecla: "", colorido: false },
+    { nome: "TCO", sigla: "TCO", tecla: "", colorido: false },
+    { nome: "CAP", sigla: "CAP", tecla: "", colorido: false },
+    { nome: "Carta de apresentação", sigla: "CARTA APRESENTACAO", tecla: "", colorido: false },
+    { nome: "Inadimplência", sigla: "INADIMPLENCIA", tecla: "", colorido: false },
+    { nome: "Declaração de união estável", sigla: "DEC UNIAO ESTAVEL", tecla: "", colorido: false },
+    { nome: "Foto 3x4", sigla: "FOTO", tecla: "", colorido: true },
+    { nome: "Outros", sigla: "DOC", tecla: "", colorido: false },
+  ];
+}
+// a lista de tipos que vinha de fabrica ate a versao 0.6 (quem nunca mexeu ganha a lista nova)
+const SIGLAS_FABRICA_ANTIGA = ["RG", "CPF", "COMP_RES", "CERT_NASC", "CERT_CAS", "FICHA", "FOTO", "DOC"];
+const TROCA_ANTIGA = { COMP_RES: "ENDERECO", CERT_NASC: "NASC", CERT_CAS: "CASAMENTO" };
+function migrar(c) {
+  if ((c._versao || 0) >= 3) return c;
+  const tipos = Array.isArray(c.tipos) ? c.tipos : [];
+  const siglas = tipos.map((t) => String(t.sigla || "").toUpperCase());
+  if (siglas.length === SIGLAS_FABRICA_ANTIGA.length && siglas.every((s, i) => s === SIGLAS_FABRICA_ANTIGA[i])) {
+    // os nomes que a equipe usa; mantem o que a pessoa marcou (obrigatorio, cor) nos que continuam
+    const novos = TIPOS_PADRAO();
+    for (const antigo of tipos) {
+      const sigla = TROCA_ANTIGA[String(antigo.sigla).toUpperCase()] || String(antigo.sigla).toUpperCase();
+      const n = novos.find((t) => t.sigla === sigla);
+      if (n) { if (antigo.obrig) n.obrig = true; if (sigla !== "FOTO") n.colorido = !!antigo.colorido; }
+    }
+    c.tipos = novos;
+  }
+  if (!c.siglaDossie || String(c.siglaDossie).toUpperCase() === "DOSSIE") c.siglaDossie = "DOSSIE COMPLETO";
+  c._versao = 3;
+  return c;
+}
 
 function mesclar(padrao, salvo) {
   if (Array.isArray(padrao)) return salvo !== undefined ? salvo : padrao;
@@ -192,6 +231,8 @@ function carregar() {
       }
     } catch { salvo = null; }
   }
+  // config antiga (sem _versao 3): troca a lista de tipos de fabrica pela dos nomes da equipe
+  if (salvo && !((salvo._versao || 0) >= 3)) { salvo._versao = salvo._versao || 2; migrar(salvo); }
   return resolver(mesclar(PADRAO, salvo || {}));
 }
 

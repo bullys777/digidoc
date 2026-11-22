@@ -44,6 +44,9 @@ DOIS MODOS (escolha em cima)
 
 Como salva:  Digitalizado\Letra M\Maria Silva\RG.pdf
 - Pasta criada automatica ao salvar. PDF <= 2 MB, nome <= 40.
+- Nomes dos arquivos no padrao da equipe: RG, CNH, CPF, ENDERECO,
+  PROPOSTA, NASC, CASAMENTO, NEG, TERMO DE COMPROMISSO, FICHA...
+  e o dossie sai como DOSSIE COMPLETO.pdf (com espaco, sem _).
 - Se o nome digitado for parecido com um que ja existe, o DigiDoc
   avisa (evita pasta duplicada). Clique no nome sugerido pra usar.
 
@@ -92,9 +95,12 @@ NOME DO ASSOCIADO
 
 LISTA DE CONFERENCIA (quem ja passou pela digitalizacao)
 ---------------------------------------------------------
-- Cada associado salvo e anotado no arquivo
-  "DigiDoc - Lista de conferencia.txt": por data, com hora e um indice
-  de A a Z no final. O nome vai exatamente como esta escrito.
+- Cada associado e anotado em "DigiDoc - Lista de conferencia.txt" e na
+  planilha "DigiDoc - Lista de conferencia.xlsx" (Excel): em ordem
+  alfabetica, letra por letra, com o dia em que passou. O nome vai igual
+  ao da pasta do associado.
+- Atualiza sozinha: ao salvar no DigiDoc e quando aparece pasta de
+  associado nova na pasta principal (mesmo criada ou copiada a mao).
 - SO nomes. Nenhum documento vai pra lista.
 - Configuracoes > Lista de conferencia:
   * Pasta da lista: escolha onde fica. Numa pasta do OneDrive ou do
@@ -103,7 +109,7 @@ LISTA DE CONFERENCIA (quem ja passou pela digitalizacao)
     das letras (ex.: Digitalizados A). O DigiDoc anota o nome de cada
     pasta de associado, como esta, com o dia em que ela foi criada.
     Nao repete quem ja esta.
-- Atalho: Historico (🕘) > Lista de conferencia.
+- Atalho: Historico (🕘) > Lista de conferencia / Planilha.
 
 
 RECONHECER O TIPO SOZINHO (opcional)

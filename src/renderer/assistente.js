@@ -177,7 +177,7 @@ window.Assistente = (() => {
     if (paginas.length && !confirm(`Tem ${paginas.length} página(s) na tela. Tirar elas (Ctrl+Z traz de volta) e abrir os documentos de ${e.associado}?`)) return;
     if (paginas.length) await removerPaginas(paginas.map((p) => p.id), "trocar pelos documentos reabertos");
     $("#inpAssociado").value = e.associado;
-    const ehDossie = e.modo === "dossie" || (arquivos.length === 1 && arquivos[0].nome.replace(/\.pdf$/i, "").replace(/_\d+$/, "").toUpperCase() === String(cfg.siglaDossie || "DOSSIE").toUpperCase());
+    const ehDossie = e.modo === "dossie" || (arquivos.length === 1 && window.NomesDoc.arquivoEhDoTipo(arquivos[0].nome, cfg.siglaDossie || "DOSSIE COMPLETO"));
     trocarModo(ehDossie ? "dossie" : "documentos");
     pausado = true; ocupado = true; atualizarBotoesFonte();
     mostrarOverlay("Abrindo os documentos salvos…");
@@ -189,8 +189,7 @@ window.Assistente = (() => {
         }, { semAjustes: true });
         total += r.adicionadas;
         if (!ehDossie) {
-          const sigla = a.nome.replace(/\.pdf$/i, "").replace(/_\d+$/, "").toUpperCase();
-          const t = cfg.tipos.find((x) => siglaArquivo(x.sigla) === sigla); // sigla como vira nome de arquivo
+          const t = window.NomesDoc.tipoDoArquivo(a.nome, cfg.tipos); // "TERMO DE COMPROMISSO.pdf" -> o tipo
           for (const id of r.ids || []) { const p = paginas.find((x) => x.id === id); if (p) p.tipo = t ? t.sigla : "@IND"; }
         }
       }
@@ -218,7 +217,7 @@ window.Assistente = (() => {
     // reabriu como dossie mas vai salvar como documentos (ou o contrario): nao grava por cima de nada
     if (edicao.modo !== modo) return null;
     if (edicao.modo === "dossie") return edicao.arquivos[0] || null;
-    const doTipo = edicao.arquivos.filter((n) => siglaDoNomeArquivo(n) === siglaArquivo(sigla));
+    const doTipo = edicao.arquivos.filter((n) => { const t = window.NomesDoc.tipoDoArquivo(n, cfg.tipos); return t && siglaArquivo(t.sigla) === siglaArquivo(sigla); });
     return doTipo.length === 1 ? doTipo[0] : null;
   }
 
