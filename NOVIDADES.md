@@ -3,6 +3,9 @@
 Cada versão nova começa com `## <versão>`. As linhas com `-` viram a lista de
 novidades que aparece no aviso de atualização dentro do app.
 
+## 0.6.3
+- Configurações > Opções avançadas: diagnóstico para o desenvolvedor (com senha). Gera um texto só com a estrutura da pasta dos digitalizados (quantas pastas, como os arquivos são nomeados), sem nomes de associados e sem abrir nenhum documento
+
 ## 0.6.2
 - Lista de conferência: ao abrir, já puxa sozinha todos os associados das pastas que existem na pasta principal (letra por letra), com o dia em que cada pasta foi criada
 

@@ -169,7 +169,7 @@ function proxTecla() {
 }
 
 // mini-caixa de texto (o window.prompt nao funciona no Electron)
-function pedirTexto(titulo, valor = "", multi = false) {
+function pedirTexto(titulo, valor = "", multi = false, senha = false) {
   return new Promise((resolve) => {
     const ov = document.createElement("div");
     ov.className = "modal";
@@ -178,7 +178,7 @@ function pedirTexto(titulo, valor = "", multi = false) {
       <div class="modal-corpo">
         ${multi
           ? `<textarea id="pt-in" rows="8" style="width:100%;font-size:14px;padding:8px;border-radius:8px;border:1px solid var(--borda);background:var(--bg);color:var(--texto)" placeholder="Um por linha…"></textarea>`
-          : `<input id="pt-in" type="text" style="width:100%;font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--borda);background:var(--bg);color:var(--texto)" />`}
+          : `<input id="pt-in" type="${senha ? "password" : "text"}" autocomplete="off" style="width:100%;font-size:15px;padding:9px;border-radius:8px;border:1px solid var(--borda);background:var(--bg);color:var(--texto)" />`}
       </div>
       <div class="modal-rod"><span class="flex1"></span>
         <button class="btn-sec" id="pt-cancel">Cancelar</button>
@@ -1454,6 +1454,8 @@ function montarFormConfig(c) {
       <h3>Instalação neste PC</h3>
       <div class="cfg-linha"><label class="rot">Remover o DigiDoc deste PC<span class="sub">tira só o programa — seus PDFs não somem</span></label>
         <button class="btn-sec" id="btnDesinstalar" style="color:var(--vermelho);border-color:var(--vermelho)">🗑 Desinstalar</button></div>
+      <div class="cfg-linha"><label class="rot">Diagnóstico para o desenvolvedor<span class="sub" id="cfgDiagTxt">precisa da senha · só a estrutura das pastas, sem nomes e sem abrir documentos</span></label>
+        <button class="btn-sec" id="btnDiagDev">🛠 Gerar</button></div>
     </div>
   </details>
 
@@ -1549,6 +1551,16 @@ function bindConfigDinamico() {
 
   const bd = $("#btnDesinstalar");
   if (bd) bd.onclick = desinstalarDoPC;
+  const bdg = $("#btnDiagDev");
+  if (bdg) bdg.onclick = async () => {
+    const senha = await pedirTexto("Senha de desenvolvedor", "", false, true);
+    if (!senha) return;
+    const t = $("#cfgDiagTxt");
+    bdg.disabled = true; t.textContent = "lendo as pastas… (numa pasta grande pode levar alguns minutos)";
+    const r = await window.api.devDiagnostico(senha).catch((e) => ({ ok: false, msg: e.message }));
+    bdg.disabled = false;
+    t.textContent = r && r.ok ? "✓ pronto — abri o arquivo e o texto já está copiado (é só colar)" : `✗ ${(r && r.msg) || "não deu certo"}`;
+  };
   const be = $("#btnEsquecerAprendizado");
   if (be) be.onclick = async () => { if (confirm("Esquecer tudo o que o reconhecimento aprendeu com as suas correções?")) { await window.api.esquecerTipos(); be.textContent = "✓ esquecido"; } };
   // escrever um nome em "salvar como" ja liga o reconhecimento daquele documento

@@ -110,6 +110,7 @@ const api = {
   conferenciaAbrir: (pasta) => ipcRenderer.invoke("conferencia:abrir", pasta),
   conferenciaEscanear: () => ipcRenderer.invoke("conferencia:escanear"),
   conferenciaImportar: (achados, pasta) => ipcRenderer.invoke("conferencia:importar", { achados, pasta }),
+  devDiagnostico: (senha) => ipcRenderer.invoke("dev:diagnostico", { senha }),
   onAviso: (cb) => ipcRenderer.on("aviso", (_e, t) => cb(t)),
 
   // eventos

@@ -843,6 +843,28 @@ ipcMain.handle("conferencia:importar", (_e, { achados, pasta } = {}) => {
   try { return Object.assign(conferencia.importar(pasta || pastaConferencia(), achados || []), { ok: true }); }
   catch (e) { return { ok: false, msg: e.message }; }
 });
+// ---- diagnostico pra desenvolvedor (temporario, com senha): so a estrutura das pastas, anonima ----
+let _diagErros = 0, _diagRodando = false;
+ipcMain.handle("dev:diagnostico", async (_e, { senha } = {}) => {
+  const diag = require("./diagnostico");
+  if (_diagRodando) return { ok: false, msg: "já estou gerando, espere terminar" };
+  if (!diag.senhaOk(senha)) {
+    _diagErros++;
+    await new Promise((r) => setTimeout(r, Math.min(10000, 800 * _diagErros))); // senha errada: cada vez demora mais
+    return { ok: false, msg: "senha errada" };
+  }
+  _diagErros = 0; _diagRodando = true;
+  try {
+    const txt = await diag.gerar(cfgSaida(), { versao: app.getVersion(), home: os.homedir(), usuario: (() => { try { return os.userInfo().username; } catch { return ""; } })(), windows: os.release() });
+    const arq = path.join(app.getPath("documents"), "DigiDoc - diagnostico.txt");
+    fs.writeFileSync(arq, "﻿" + txt.replace(/\r?\n/g, "\r\n"));
+    clipboard.writeText(txt);
+    shell.openPath(arq);
+    return { ok: true, arq };
+  } catch (e) { return { ok: false, msg: e.message }; }
+  finally { _diagRodando = false; }
+});
+
 function resumoHoje(h) {
   const hoje = new Date().toDateString();
   const doDia = h.filter((e) => new Date(e.quando).toDateString() === hoje);
