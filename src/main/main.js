@@ -753,9 +753,11 @@ ipcMain.handle("salvar:dossie", async (_e, { nomeAssociado, ids, nivel, substitu
 ipcMain.handle("salvar:documentos", async (_e, { nomeAssociado, grupos, nivel, substituir }) => {
   try {
     const dir = files.pastaAssociado(cfgSaida(), nomeAssociado, true);
+    // documento de dependente: o nome dele vai depois do tipo ("NASC JOAO.pdf")
+    const complemento = (g) => String(g.complemento || "").replace(/[<>:"/\\|?*\x00-\x1f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 24);
     const lista = grupos.map((g) => ({
       // so o grupo que veio de um PDF reaberto grava por cima dele; documento novo segue a regra normal
-      nome: (substituir && nomeArquivoSeguro(g.nomeArquivo)) || files.montaNomeArquivo(cfg, { nomeAssociado, tipoSigla: g.tipoSigla, incluirNome: false }),
+      nome: (substituir && nomeArquivoSeguro(g.nomeArquivo)) || files.montaNomeArquivo(cfg, { nomeAssociado, tipoSigla: complemento(g) ? `${g.tipoSigla} ${complemento(g)}` : g.tipoSigla, incluirNome: false }),
       substituir: !!(substituir && nomeArquivoSeguro(g.nomeArquivo)),
       ids: g.ids, colorido: g.colorido,
     }));
@@ -875,6 +877,84 @@ ipcMain.handle("conferencia:importar", (_e, { achados, pasta } = {}) => {
   try { return Object.assign(conferencia.importar(pasta || pastaConferencia(), achados || []), { ok: true }); }
   catch (e) { return { ok: false, msg: e.message }; }
 });
+// ---- arrumar pastas antigas (opcional, so faz o que a pessoa marcar; nada e apagado) ----
+const ULTIMA_ARRUMACAO = path.join(app.getPath("userData"), "ultima-arrumacao.json");
+const dentroDaRaiz = (raiz, p) => { const r = path.resolve(raiz) + path.sep; return !!p && path.resolve(p).toLowerCase().startsWith(r.toLowerCase()); };
+ipcMain.handle("arrumar:escolherPasta", async () => {
+  const r = await dialog.showOpenDialog(win, { title: "Pasta pra arrumar (a principal ou a de uma letra)", defaultPath: cfgSaida().pastaSaida, properties: ["openDirectory"] });
+  return r.canceled ? null : r.filePaths[0] || null;
+});
+ipcMain.handle("arrumar:analisar", async (_e, { raiz } = {}) => {
+  try {
+    const alvo = raiz || cfgSaida().pastaSaida;
+    if (!fs.existsSync(alvo)) return { erro: "Não achei a pasta." };
+    return require("./arrumar").analisar(alvo, cfg);
+  } catch (e) { return { erro: e.message }; }
+});
+// le uma pagina (desenhada na tela a partir do PDF) e diz o tipo — pra sugerir o nome do arquivo sem nome
+ipcMain.handle("arrumar:classificar", async (_e, { bytes } = {}) => {
+  try {
+    if (!classificador.disponivel()) return { erro: "Falta o leitor de texto em português." };
+    const r = await classificador.classificar(Buffer.from(bytes), cfg.tipos || [], { reconhecimento: cfg.reconhecimento || {} });
+    return { sigla: r.sigla || "", nomeTipo: r.nomeTipo || "", conf: r.conf || 0, nome: r.nome || "", motivo: r.motivo || "" };
+  } catch (e) { return { erro: e.message }; }
+});
+ipcMain.handle("arrumar:aplicar", (_e, { raiz, itens } = {}) => {
+  try {
+    if (!raiz || !fs.existsSync(raiz)) return { erro: "Não achei a pasta." };
+    // seguranca: so mexe dentro da pasta analisada, e o nome novo e so um nome (sem pasta)
+    const ok = (itens || []).filter((it) => dentroDaRaiz(raiz, it.de) && (!it.para || dentroDaRaiz(raiz, it.para)) &&
+      (it.acao !== "renomear" || path.basename(String(it.novoNome || "")) === String(it.novoNome || "")));
+    const r = require("./arrumar").aplicar(raiz, ok, { documentos: app.getPath("documents"), ultimaArq: ULTIMA_ARRUMACAO, principal: cfgSaida().pastaSaida });
+    estatisticas.invalidar(); agendarSincConferencia(1500);
+    return r;
+  } catch (e) { return { erro: e.message }; }
+});
+// comprimir: a tela desenhou as paginas do PDF (ids); gera de novo (<= limite) e troca. O original vai pra seguranca
+ipcMain.handle("arrumar:comprimir", async (_e, { diarioArq, raiz, caminho, ids } = {}) => {
+  const tmp = String(caminho || "").replace(/\.pdf$/i, "") + " (comprimindo).pdf";
+  try {
+    if (!dentroDaRaiz(raiz, caminho) || !fs.existsSync(caminho)) return { ok: false, msg: "não achei o arquivo" };
+    const antes = fs.statSync(caminho).size;
+    const pgs = (ids || []).map((id) => paginas.get(id)).filter(Boolean)
+      .map((p) => ({ buffer: p.processado, width: p.meta.w, height: p.meta.h, dpiOrigem: cfg.scanner.resolucao || 200 }));
+    if (!pgs.length) return { ok: false, msg: "não consegui ler as páginas" };
+    let bytes;
+    try { bytes = (await pdf.gerarPDF(pgs, tmp, { maxBytes: cfg.tamanhoMaxMB * 1048576, nivel: cfg.compressaoPadraoDossie })).bytes; }
+    catch (e) { if (e.salvouAcimaDoLimite) bytes = e.bytes; else throw e; }
+    if (!bytes || bytes >= antes) { fs.rmSync(tmp, { force: true }); return { ok: false, msg: "não ficou menor que o original" }; }
+    const arq = require("./arrumar").trocarPorComprimido(diarioArq, raiz, caminho, tmp, { documentos: app.getPath("documents"), principal: cfgSaida().pastaSaida });
+    try { fs.writeFileSync(ULTIMA_ARRUMACAO, JSON.stringify({ arq, em: Date.now(), raiz })); } catch {}
+    estatisticas.invalidar();
+    return { ok: true, antes, bytes, diarioArq: arq };
+  } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} return { ok: false, msg: e.message }; }
+  finally { for (const id of ids || []) { paginas.delete(id); lixeira.delete(id); } }
+});
+ipcMain.handle("arrumar:ultima", () => {
+  try {
+    const u = JSON.parse(fs.readFileSync(ULTIMA_ARRUMACAO, "utf8"));
+    const d = JSON.parse(fs.readFileSync(u.arq, "utf8"));
+    return d.desfeito ? null : { arq: u.arq, em: u.em, raiz: u.raiz, ops: d.ops.length, seguranca: d.seguranca };
+  } catch { return null; }
+});
+ipcMain.handle("arrumar:desfazer", (_e, { diarioArq } = {}) => {
+  try {
+    const r = require("./arrumar").desfazer(diarioArq);
+    estatisticas.invalidar(); agendarSincConferencia(1500);
+    return r;
+  } catch (e) { return { ok: false, msg: e.message }; }
+});
+// abrir um PDF da lista (pra ver antes de decidir) ou a pasta de seguranca
+ipcMain.handle("arrumar:abrir", (_e, { caminho, raiz } = {}) => {
+  try {
+    const p = String(caminho || "");
+    const seg = p.includes("DigiDoc - backup da arrumacao");
+    if (!(dentroDaRaiz(raiz, p) || seg) || !fs.existsSync(p)) return false;
+    if (fs.statSync(p).isFile() && !/\.pdf$/i.test(p)) return false;
+    shell.openPath(p); return true;
+  } catch { return false; }
+});
+
 // ---- diagnostico pra desenvolvedor (temporario, com senha): so a estrutura das pastas, anonima ----
 let _diagErros = 0, _diagRodando = false;
 ipcMain.handle("dev:diagnostico", async (_e, { senha } = {}) => {

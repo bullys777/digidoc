@@ -111,6 +111,15 @@ const api = {
   conferenciaEscanear: () => ipcRenderer.invoke("conferencia:escanear"),
   conferenciaImportar: (achados, pasta) => ipcRenderer.invoke("conferencia:importar", { achados, pasta }),
   devDiagnostico: (senha) => ipcRenderer.invoke("dev:diagnostico", { senha }),
+  // arrumar pastas antigas (opcional)
+  arrumarEscolherPasta: () => ipcRenderer.invoke("arrumar:escolherPasta"),
+  arrumarAnalisar: (raiz) => ipcRenderer.invoke("arrumar:analisar", { raiz }),
+  arrumarClassificar: (bytes) => ipcRenderer.invoke("arrumar:classificar", { bytes }),
+  arrumarAplicar: (raiz, itens) => ipcRenderer.invoke("arrumar:aplicar", { raiz, itens }),
+  arrumarComprimir: (args) => ipcRenderer.invoke("arrumar:comprimir", args),
+  arrumarUltima: () => ipcRenderer.invoke("arrumar:ultima"),
+  arrumarDesfazer: (diarioArq) => ipcRenderer.invoke("arrumar:desfazer", { diarioArq }),
+  arrumarAbrir: (caminho, raiz) => ipcRenderer.invoke("arrumar:abrir", { caminho, raiz }),
   onAviso: (cb) => ipcRenderer.on("aviso", (_e, t) => cb(t)),
 
   // eventos

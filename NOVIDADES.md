@@ -3,6 +3,14 @@
 Cada versão nova começa com `## <versão>`. As linhas com `-` viram a lista de
 novidades que aparece no aviso de atualização dentro do app.
 
+## 0.8.0
+- Documento de dependente: marque as páginas e clique em "De quem é" (👤 Titular / ＋ Dependente) — o arquivo sai com o nome dele, ex.: "NASC JOAO.pdf", "NEG MARIA.pdf"
+- Pra não errar: o DigiDoc lê o nome escrito no documento e, se não bater com o associado, marca a página com 👤? e pede pra conferir antes de salvar
+- Reconhece sozinho: certidão negativa (NEG), termo de compromisso (TCO), autorização de débito em conta (AUTO CONTA) e no cartão de crédito (AUTO CARTAO), carta de apresentação, declaração de união estável e inadimplência
+- TCO conta como termo de compromisso e CONTA como autorização de débito em conta (a lista de tipos ficou mais curta)
+- 🧹 Arrumar pastas antigas (Painel ou Configurações > Pastas e nomes), opcional: acha cópias duplicadas (original + "_compressed"), nomes fora do padrão, arquivos do scanner sem nome (lê o documento e sugere o nome), PDF acima de 2 MB, pasta na letra errada e pasta vazia. Só faz o que você marcar, nada é apagado (vai pra uma pasta de segurança) e dá pra desfazer
+- Corrigido: a troca da lista de tipos da 0.7.0 podia perder a marcação de documento obrigatório
+
 ## 0.7.0
 - Lista de conferência em ordem alfabética, letra por letra (A, B, C...), com o dia em que cada associado passou
 - Planilha da lista (Excel): "DigiDoc - Lista de conferencia.xlsx", também por letra, com filtro — botão 📗 Planilha no Histórico e nas Configurações

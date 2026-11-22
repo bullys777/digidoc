@@ -45,7 +45,8 @@ DOIS MODOS (escolha em cima)
 Como salva:  Digitalizado\Letra M\Maria Silva\RG.pdf
 - Pasta criada automatica ao salvar. PDF <= 2 MB, nome <= 40.
 - Nomes dos arquivos no padrao da equipe: RG, CNH, CPF, ENDERECO,
-  PROPOSTA, NASC, CASAMENTO, NEG, TERMO DE COMPROMISSO, FICHA...
+  PROPOSTA, NASC, CASAMENTO, NEG (certidao negativa), TERMO DE
+  COMPROMISSO (TCO), FICHA, AUTO CONTA, AUTO CARTAO (credito)...
   e o dossie sai como DOSSIE COMPLETO.pdf (com espaco, sem _).
 - Se o nome digitado for parecido com um que ja existe, o DigiDoc
   avisa (evita pasta duplicada). Clique no nome sugerido pra usar.
@@ -118,12 +119,40 @@ RECONHECER O TIPO SOZINHO (opcional)
   de tipos (modo DOCUMENTO POR DOCUMENTO).
 - O DigiDoc le o texto da pagina e ja marca o tipo (✨ na etiqueta):
   RG, CNH, CPF, comprovante de endereco, certidoes, ficha, proposta,
-  holerite, titulo de eleitor, carteira de trabalho, foto 3x4.
+  certidao negativa, termo de compromisso, autorizacao de debito em
+  conta e no cartao, carta de apresentacao, uniao estavel,
+  inadimplencia, holerite, titulo de eleitor, carteira de trabalho,
+  foto 3x4.
 - Errou? Clique na etiqueta da pagina e escolha o certo. Ele aprende.
 - "Salvar como": em Configuracoes > Reconhecimento voce escolhe o nome
   do arquivo de cada um (ex.: comprovante de endereco -> ENDERECO).
 - Le tambem o NOME escrito no RG/CNH/CPF e sugere pro campo Associado.
 - Pagina que ficar sem tipo NAO e salva e continua na tela.
+
+
+DOCUMENTO DE DEPENDENTE (filho, conjuge...)
+-------------------------------------------
+- Marque as paginas e, embaixo dos tipos, em "De quem e", clique em
+  ＋ Dependente e escreva o primeiro nome (ex.: JOAO). Tambem da pela
+  etiqueta da pagina.
+- O arquivo sai com o nome dele: NASC JOAO.pdf, NEG MARIA.pdf.
+  O documento do titular continua RG.pdf, CPF.pdf...
+- Com o reconhecimento ligado o DigiDoc le o nome escrito no documento.
+  Se nao bater com o associado, a pagina ganha 👤? e antes de salvar
+  aparece "Confira de quem e cada documento".
+
+
+ARRUMAR PASTAS ANTIGAS (opcional)
+---------------------------------
+- Painel (F3) > 🧹 Arrumar pastas, ou Configuracoes > Pastas e nomes.
+- Primeiro so ANALISA (nao muda nada) e mostra o que da pra arrumar:
+  copias duplicadas (original + "_compressed"), nomes fora do padrao
+  (COMP. ENDEREÇO -> ENDERECO), arquivos do scanner sem nome
+  ("2026-11-05 (1).pdf" - o botao "Ler e sugerir" le e sugere o nome),
+  PDF acima de 2 MB, pasta na letra errada, pasta vazia.
+- So faz o que voce marcar. NADA e apagado: o que sai vai pra pasta
+  "DigiDoc - backup da arrumacao" (do lado da pasta principal).
+- Da pra desfazer (botao "Desfazer" na mesma janela).
 
 
 FILA DE ASSOCIADOS (botao 👥 Fila)

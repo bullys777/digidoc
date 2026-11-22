@@ -339,23 +339,14 @@ window.ImportarPDF = (() => {
       const dpi = (cfg && cfg.scanner && cfg.scanner.resolucao) || 200; // mesmo dpi do scanner: o PDF final sai no tamanho certo
       for (let i = 1; i <= doc.numPages; i++) {
         progresso && progresso(`Lendo ${nome}: página ${i} de ${doc.numPages}…`, i - 1, doc.numPages);
-        const pg = await doc.getPage(i);
-        const v1 = pg.getViewport({ scale: 1 });
-        const escala = Math.min(dpi / 72, 3400 / Math.max(v1.width, v1.height)); // nunca gigante
-        const vp = pg.getViewport({ scale: escala });
-        const cv = document.createElement("canvas");
-        cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
-        const ctx = cv.getContext("2d");
-        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
-        // intent "print": desenha sem esperar quadro da tela. No modo normal ("display") o pdf.js espera
-        // o proximo quadro — com a janela coberta por outra, o Windows pausa a tela e a importacao travava
-        await pg.render({ canvasContext: ctx, viewport: vp, intent: "print" }).promise;
-        const blob = await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.92));
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-        cv.width = cv.height = 0; pg.cleanup();
+        const bytes = await desenhar(doc, i, dpi);
         const reg = await window.api.addBuffer({ bytes, colorido: false, semAjustes: !!opcoes.semAjustes });
         if (reg && reg.branca) out.brancas++;
-        else if (reg && reg.id) { adicionarResultados([reg]); out.adicionadas++; out.ids.push(reg.id); }
+        else if (reg && reg.id) {
+          // semTela: so registra a pagina (ex.: comprimir um PDF na arrumacao), nao poe na grade
+          if (!opcoes.semTela) adicionarResultados([reg]);
+          out.adicionadas++; out.ids.push(reg.id);
+        }
       }
       progresso && progresso(`${nome}: pronto`, doc.numPages, doc.numPages);
     } catch (e) {
@@ -364,7 +355,32 @@ window.ImportarPDF = (() => {
     } finally { try { if (doc) await doc.destroy(); } catch {} }
     return out;
   }
-  return { importar };
+  // uma pagina do PDF como imagem (JPEG)
+  async function desenhar(doc, i, dpi) {
+    const pg = await doc.getPage(i);
+    const v1 = pg.getViewport({ scale: 1 });
+    const escala = Math.min(dpi / 72, 3400 / Math.max(v1.width, v1.height)); // nunca gigante
+    const vp = pg.getViewport({ scale: escala });
+    const cv = document.createElement("canvas");
+    cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+    // intent "print": desenha sem esperar quadro da tela. No modo normal ("display") o pdf.js espera
+    // o proximo quadro — com a janela coberta por outra, o Windows pausa a tela e a importacao travava
+    await pg.render({ canvasContext: ctx, viewport: vp, intent: "print" }).promise;
+    const blob = await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.92));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    cv.width = cv.height = 0; pg.cleanup();
+    return bytes;
+  }
+  // abre o PDF pra ler algumas paginas (lembre de chamar doc.destroy())
+  async function abrirDoc(caminho) {
+    const arq = await window.api.lerPdf(caminho);
+    if (arq.erro) throw new Error(arq.erro);
+    const pdfjs = await carregarLib();
+    return pdfjs.getDocument({ data: arq.bytes, isEvalSupported: false, enableXfa: false }).promise;
+  }
+  return { importar, desenhar, abrirDoc };
 })();
 
 // =====================================================================
@@ -411,6 +427,7 @@ window.Painel = (() => {
       titulo: "📊 Painel de produção", largura: 1000, classe: "painel-cx",
       corpo: `<div class="painel-carregando"><div class="spinner"></div>Contando os documentos na pasta…</div>`,
       rodape: `<span class="sub" id="pnOnde"></span>
+        <button class="btn-sec" id="pnArrumar" title="Duplicados, nomes fora do padrão, arquivos do scanner sem nome… (opcional, dá pra desfazer)">🧹 Arrumar pastas</button>
         <button class="btn-sec" id="pnRecontar">🔄 Recontar</button>
         <button class="btn-sec" id="pnExportar">📥 Relatório (Excel)</button>`,
     });
@@ -556,6 +573,7 @@ window.Painel = (() => {
       if (rolar) J.q("#pnLista").scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
+    J.q("#pnArrumar").onclick = () => { J.fechar(); window.Arrumar.abrir(); };
     J.q("#pnRecontar").onclick = async () => { J.q("#pnRecontar").disabled = true; await carregarDados(true); J.q("#pnRecontar").disabled = false; };
     J.q("#pnExportar").onclick = async () => {
       const r = await window.api.exportarRelatorio();
@@ -880,4 +898,258 @@ window.Extras = { atalhos: abrirAtalhos, historico: abrirHistorico };
     let dia = diaLocal(Date.now());
     setInterval(() => { if (diaLocal(Date.now()) !== dia) { dia = diaLocal(Date.now()); window.Painel.atualizarContador(); } }, 60000);
   }, 200);
+})();
+
+// =====================================================================
+// ARRUMAR PASTAS ANTIGAS (opcional): analisa, mostra o plano, so faz o que a pessoa marcar.
+// Nada e apagado: o que sai vai pra uma pasta de seguranca, e da pra desfazer.
+// =====================================================================
+window.Arrumar = (() => {
+  const CATS = [
+    { id: "duplicado", ico: "📑", tit: "Cópias duplicadas", sub: "o PDF original junto com o “_compressed” (fica o menor), ou dois arquivos iguais. A cópia vai pra pasta de segurança." },
+    { id: "nome", ico: "✏️", tit: "Nomes fora do padrão", sub: "renomeia pro nome da equipe: COMP. ENDEREÇO → ENDERECO, NEGATIVA JOAO → NEG JOAO, tira o “_compressed”." },
+    { id: "semNome", ico: "❓", tit: "Arquivos do scanner sem nome", sub: "ex.: “2026-11-05 (1).pdf”. Clique em “Ler e sugerir”: o DigiDoc lê o documento e sugere o nome — confira e marque." },
+    { id: "grande", ico: "🗜️", tit: "Acima do limite de tamanho", sub: "gera o PDF de novo, menor. O original vai pra pasta de segurança. Leva um pouco por arquivo." },
+    { id: "letra", ico: "🔤", tit: "Pasta na letra errada", sub: "move a pasta do associado pra pasta da letra certa." },
+    { id: "nomePasta", ico: "␣", tit: "Espaço sobrando no nome da pasta", sub: "tira espaço duplo ou no fim do nome da pasta do associado." },
+    { id: "vazia", ico: "📂", tit: "Pastas vazias", sub: "remove a pasta de associado que não tem nenhum arquivo." },
+    { id: "info", ico: "ℹ️", tit: "Só pra saber (não mexo)", sub: "coisas que vale olhar à mão." },
+  ];
+  const DOC_COM_DONO = ["RG", "CNH", "CPF", "NASC", "NEG"];
+  let J = null, raiz = "", plano = null, porId = new Map(), lendo = false, parar = false;
+  const telaInicial = () => `<div class="arr-vazio"><button class="btn-salvar" id="arAnalisar">🔍 Analisar (não muda nada)</button></div>`;
+
+  async function abrir() {
+    if (J && J.ov.isConnected) return;
+    plano = null; raiz = ""; porId = new Map();
+    const ultima = await window.api.arrumarUltima().catch(() => null);
+    J = abrirJanela({
+      titulo: "🧹 Arrumar pastas antigas", largura: 1000, classe: "arr-cx",
+      corpo: `<div class="arr-topo">
+          <div class="arr-pasta"><b>Pasta:</b> <span id="arPasta">${esc(cfg.pastaSaida || "")}</span> <button class="mini" id="arTrocar">Trocar…</button></div>
+          <p class="sub">É opcional e nada acontece sozinho: primeiro o DigiDoc só <b>analisa</b> e mostra o que dá pra arrumar. Você marca o que quer.
+            <b>Nada é apagado</b> — o que sai vai pra uma pasta de segurança (do lado da pasta principal), e dá pra desfazer.</p>
+          ${ultima ? `<div class="arr-ultima">↩ Última arrumação: ${esc(new Date(ultima.em).toLocaleString("pt-BR"))} (${fmtNum(ultima.ops)} mudança(s))
+            <button class="mini" id="arDesfazerUlt">Desfazer</button> <button class="mini" id="arVerSeg">Abrir a pasta de segurança</button></div>` : ""}
+        </div>
+        <div id="arCorpo">${telaInicial()}</div>`,
+      rodape: `<span class="sub" id="arResumo"></span><span class="flex1"></span><button class="btn-salvar" id="arAplicar" disabled>Aplicar os marcados</button>`,
+    });
+    J.q("#arAnalisar").onclick = analisar;
+    J.q("#arTrocar").onclick = async () => {
+      const p = await window.api.arrumarEscolherPasta();
+      if (!p) return;
+      raiz = p; plano = null; J.q("#arPasta").textContent = p;
+      J.q("#arCorpo").innerHTML = telaInicial(); J.q("#arAnalisar").onclick = analisar; contar();
+    };
+    if (ultima) {
+      J.q("#arDesfazerUlt").onclick = () => desfazer(ultima.arq);
+      J.q("#arVerSeg").onclick = () => window.api.arrumarAbrir(ultima.seguranca, ultima.raiz);
+    }
+    J.q("#arAplicar").onclick = aplicar;
+  }
+
+  async function analisar() {
+    J.q("#arCorpo").innerHTML = `<div class="painel-carregando"><div class="spinner"></div>Olhando as pastas (não mexo em nada)…</div>`;
+    const r = await window.api.arrumarAnalisar(raiz || null);
+    if (!J.ov.isConnected) return;
+    if (!r || r.erro) { J.q("#arCorpo").innerHTML = `<p style="color:var(--vermelho)">Não consegui analisar: ${esc((r && r.erro) || "erro")}</p>`; return; }
+    plano = r; raiz = r.raiz; porId = new Map(r.itens.map((it) => [it.id, it]));
+    J.q("#arPasta").textContent = r.raiz;
+    desenhar();
+  }
+
+  const dossie = () => cfg.siglaDossie || "DOSSIE COMPLETO";
+  const opcoesTipo = (sel) => `<option value="">— escolha o documento —</option>` +
+    `<option value="${esc(dossie())}"${sel === dossie() ? " selected" : ""}>Dossiê completo</option>` +
+    cfg.tipos.map((t) => `<option value="${esc(t.sigla)}"${sel === t.sigla ? " selected" : ""}>${esc(t.nome)}</option>`).join("");
+
+  function linha(it) {
+    const temCk = !!it.acao;
+    const extra = it.cat === "semNome"
+      ? `<div class="arr-escolha"><select class="arr-tipo">${opcoesTipo(it._tipo || "")}</select>
+          <input class="arr-comp" placeholder="dependente (opcional)" maxlength="24" value="${esc(it._dono || "")}">
+          <span class="arr-sug">${it._sug ? esc(it._sug) : ""}</span></div>` : "";
+    const ver = /\.pdf$/i.test(it.de) ? `<button class="mini arr-ver" title="Abrir o PDF pra ver">👁</button>` : "";
+    return `<div class="arr-it${it.bloqueado ? " bloq" : ""}" data-id="${it.id}">
+      ${temCk ? `<input type="checkbox" class="arr-ck"${it.marcado && !it.bloqueado ? " checked" : ""}${it.bloqueado ? " disabled" : ""}>` : `<span class="arr-ck-vazio"></span>`}
+      <div class="arr-txt"><div><b>${esc(it.socio || "")}</b>${it.arquivo ? ` <span class="arr-arq">${esc(it.arquivo)}</span>` : ""}${it.novoNome ? `<span class="arr-novo-w"> → <b class="arr-novo">${esc(it.novoNome)}</b></span>` : ""}</div>
+        <small>${esc(it.motivo || "")}${it.bytes && it.cat !== "grande" ? ` · ${fmtMB(it.bytes)}` : ""}${it.nota ? ` · <b>${esc(it.nota)}</b>` : ""}${it.bloqueado ? ` · <b>${esc(it.bloqueado)}</b>` : ""}</small>${extra}</div>
+      ${ver}</div>`;
+  }
+
+  function desenhar() {
+    const r = plano;
+    const secs = CATS.map((c) => ({ c, itens: r.itens.filter((it) => it.cat === c.id) })).filter((s) => s.itens.length);
+    const bytesDup = r.itens.filter((it) => it.cat === "duplicado").reduce((n, it) => n + (it.bytes || 0), 0);
+    J.q("#arCorpo").innerHTML = `<div class="arr-res">${fmtNum(r.resumo.socios)} associado(s) · ${fmtNum(r.resumo.arquivos)} arquivo(s) · ${fmtMB(r.resumo.bytes)}${bytesDup ? ` · as cópias duplicadas ocupam <b>${fmtMB(bytesDup)}</b>` : ""}</div>` +
+      (secs.length ? secs.map(({ c, itens }) => `
+      <details class="arr-sec" data-cat="${c.id}" ${c.id === "info" ? "" : "open"}>
+        <summary>${c.id !== "info" ? `<input type="checkbox" class="arr-todos" title="Marcar/desmarcar todos">` : ""}<span class="arr-ico">${c.ico}</span><b>${esc(c.tit)}</b><span class="arr-n">${fmtNum(itens.length)}</span>
+          <small>${esc(c.sub)}</small></summary>
+        ${c.id === "semNome" ? `<div class="arr-acoes"><button class="btn-sec" id="arLer">✨ Ler e sugerir o nome</button> <span class="sub" id="arLerTxt"></span></div>` : ""}
+        <div class="arr-lista">${itens.map(linha).join("")}</div>
+      </details>`).join("") : `<p class="arr-ok">✓ Tudo arrumado — não achei nada pra mudar nessa pasta.</p>`);
+    J.qq(".arr-it").forEach((el) => {
+      const it = porId.get(el.dataset.id);
+      const ck = el.querySelector(".arr-ck");
+      if (ck) ck.onchange = () => { it.marcado = ck.checked; contar(); };
+      const v = el.querySelector(".arr-ver");
+      if (v) v.onclick = () => window.api.arrumarAbrir(it.de, raiz);
+      const tp = el.querySelector(".arr-tipo"), cp = el.querySelector(".arr-comp");
+      if (tp) {
+        const mudou = async () => { it._tipo = tp.value; it._dono = donoLimpo(cp.value); await nomeNovo(it, el); it.marcado = !!it.novoNome; ck.checked = it.marcado; contar(); };
+        tp.onchange = mudou; cp.onchange = mudou;
+        cp.addEventListener("keydown", (e) => e.stopPropagation());
+      }
+    });
+    J.qq(".arr-todos").forEach((t) => {
+      const sec = t.closest(".arr-sec");
+      const cks = () => [...sec.querySelectorAll(".arr-ck:not(:disabled)")];
+      t.checked = cks().length > 0 && cks().every((c) => c.checked);
+      t.onclick = (e) => e.stopPropagation();
+      t.onchange = () => {
+        for (const c of cks()) {
+          const it = porId.get(c.closest(".arr-it").dataset.id);
+          if (it.cat === "semNome" && !it.novoNome) continue; // sem nome escolhido nao da pra marcar
+          c.checked = t.checked; it.marcado = t.checked;
+        }
+        contar();
+      };
+    });
+    const bl = J.q("#arLer");
+    if (bl) bl.onclick = () => (lendo ? (parar = true) : lerESugerir());
+    contar();
+  }
+
+  async function nomeNovo(it, el) {
+    it.novoNome = it._tipo ? await window.api.nomeArquivo({ tipoSigla: it._dono ? `${it._tipo} ${it._dono}` : it._tipo, incluirNome: false }) : "";
+    if (!el) return;
+    const alvo = el.querySelector(".arr-txt > div");
+    const velho = alvo.querySelector(".arr-novo-w"); if (velho) velho.remove();
+    if (it.novoNome) alvo.insertAdjacentHTML("beforeend", `<span class="arr-novo-w"> → <b class="arr-novo">${esc(it.novoNome)}</b></span>`);
+  }
+
+  // le algumas paginas de cada arquivo sem nome e sugere: muitas paginas ou varios documentos = dossie
+  async function lerESugerir() {
+    const lista = plano.itens.filter((it) => it.cat === "semNome" && !it._lido);
+    if (!lista.length) { J.q("#arLerTxt").textContent = "já li todos."; return; }
+    lendo = true; parar = false; contar();
+    const bl = J.q("#arLer"); bl.textContent = "⏹ Parar";
+    let feitos = 0;
+    for (const it of lista) {
+      if (parar || !J.ov.isConnected) break;
+      J.q("#arLerTxt").textContent = `lendo ${feitos + 1} de ${lista.length}: ${it.socio} / ${it.arquivo}…`;
+      let doc = null, sug = null, motivo = "";
+      try {
+        doc = await window.ImportarPDF.abrirDoc(it.de);
+        const n = doc.numPages;
+        const amostras = [...new Set([1, 2, Math.ceil(n / 2), n])].filter((i) => i >= 1 && i <= n).slice(0, 4);
+        const lidos = [];
+        for (const i of amostras) {
+          if (parar) break;
+          const r = await window.api.arrumarClassificar(await window.ImportarPDF.desenhar(doc, i, 150));
+          if (r && !r.erro) lidos.push(r);
+        }
+        const siglas = new Set(lidos.filter((r) => r.sigla).map((r) => r.sigla));
+        if (n >= 5 || siglas.size >= 2) { sug = { tipo: dossie(), dono: "" }; motivo = `${n} página(s)${siglas.size >= 2 ? ", vários documentos" : ""} → dossiê`; }
+        else if (siglas.size === 1) {
+          const s = [...siglas][0], r = lidos.find((x) => x.sigla === s);
+          let dono = "";
+          const comDono = DOC_COM_DONO.some((k) => window.NomesDoc.nomesDoTipo(k).includes(window.NomesDoc.chave(s)));
+          if (comDono && r.nome && window.NomesDoc.outraPessoa(r.nome, it.socio)) dono = window.NomesDoc.primeiroNome(r.nome);
+          sug = { tipo: s, dono }; motivo = `li: ${r.nomeTipo || s}${r.nome ? ` · nome no documento: ${r.nome}` : ""}${dono ? " (dependente?)" : ""}`;
+        } else motivo = `${n} página(s) — não reconheci, escolha o documento`;
+      } catch (e) { motivo = "não consegui ler: " + e.message; }
+      finally { try { if (doc) await doc.destroy(); } catch {} }
+      it._lido = true; it._sug = motivo;
+      if (sug) { it._tipo = sug.tipo; it._dono = sug.dono; }
+      const el = J.ov.isConnected ? J.q(`.arr-it[data-id="${it.id}"]`) : null;
+      if (el) {
+        el.querySelector(".arr-sug").textContent = motivo;
+        if (sug) {
+          el.querySelector(".arr-tipo").value = sug.tipo; el.querySelector(".arr-comp").value = sug.dono || "";
+          await nomeNovo(it, el); it.marcado = !!it.novoNome; el.querySelector(".arr-ck").checked = it.marcado;
+        }
+      }
+      feitos++;
+    }
+    lendo = false;
+    if (J.ov.isConnected) {
+      bl.textContent = "✨ Ler e sugerir o nome";
+      J.q("#arLerTxt").textContent = parar ? `parei (${feitos} lido(s)).` : `pronto: ${feitos} lido(s). Confira as sugestões antes de aplicar.`;
+      contar();
+    }
+  }
+
+  const marcados = () => (plano ? plano.itens.filter((it) => it.acao && it.marcado && !it.bloqueado && (it.acao !== "renomear" || it.novoNome)) : []);
+  function contar() {
+    if (!J || !J.ov.isConnected) return;
+    const m = marcados();
+    const b = J.q("#arAplicar");
+    b.disabled = !m.length || lendo;
+    b.textContent = m.length ? `Aplicar os marcados (${fmtNum(m.length)})` : "Aplicar os marcados";
+    J.q("#arResumo").textContent = plano ? `${fmtNum(m.length)} mudança(s) marcada(s)` : "";
+    // o "marcar todos" de cada grupo acompanha as linhas
+    J.qq(".arr-todos").forEach((t) => { const cks = [...t.closest(".arr-sec").querySelectorAll(".arr-ck:not(:disabled)")]; t.checked = cks.length > 0 && cks.every((c) => c.checked); });
+  }
+
+  async function aplicar() {
+    const m = marcados();
+    if (!m.length) return;
+    const comp = m.filter((it) => it.acao === "comprimir");
+    if (!confirm(`Fazer ${m.length} mudança(s) na pasta?\n\nNada é apagado: o que sai vai pra uma pasta de segurança (do lado da pasta principal), e dá pra desfazer depois.${comp.length ? `\n\n${comp.length} PDF(s) vão ser comprimidos — leva um pouco.` : ""}`)) return;
+    J.q("#arAplicar").disabled = true;
+    J.q("#arCorpo").innerHTML = `<div class="painel-carregando"><div class="spinner"></div><span id="arProg">Arrumando…</span></div>`;
+    const leve = (it) => ({ id: it.id, acao: it.acao, de: it.de, para: it.para || null, novoNome: it.novoNome || "" });
+    const r = await window.api.arrumarAplicar(raiz, m.filter((it) => it.acao !== "comprimir").map(leve));
+    if (!J.ov.isConnected) return;
+    if (!r || r.erro) { J.q("#arCorpo").innerHTML = `<p style="color:var(--vermelho)">Não consegui: ${esc((r && r.erro) || "erro")}</p>`; return; }
+    let diario = r.diarioArq || "", seguranca = r.seguranca || "";
+    const feitos = r.feitos.slice(), pulados = r.pulados.slice();
+    // comprimir: desenha as paginas, gera de novo (<= limite) e troca (o original vai pra seguranca)
+    for (let i = 0; i < comp.length; i++) {
+      const it = comp[i];
+      let caminho = r.caminhos[it.de] || it.de;
+      // a pasta do associado pode ter sido renomeada/movida nesta mesma arrumacao
+      for (const [a, b] of r.pastasMovidas || []) if (caminho.toLowerCase().startsWith(a.toLowerCase() + "\\") || caminho.toLowerCase().startsWith(a.toLowerCase() + "/")) caminho = b + caminho.slice(a.length);
+      const p = J.q("#arProg"); if (p) p.textContent = `Comprimindo ${i + 1} de ${comp.length}: ${it.socio} / ${caminho.split(/[\\/]/).pop()}…`;
+      const im = await window.ImportarPDF.importar(caminho, null, { semAjustes: true, semTela: true });
+      if (im.erro || !im.ids.length) { pulados.push({ id: it.id, txt: im.erro || "não consegui ler" }); continue; }
+      const c = await window.api.arrumarComprimir({ diarioArq: diario, raiz, caminho, ids: im.ids });
+      if (c.ok) { diario = c.diarioArq; feitos.push({ id: it.id, txt: `${fmtMB(c.antes)} → ${fmtMB(c.bytes)}` }); }
+      else pulados.push({ id: it.id, txt: c.msg });
+    }
+    if (!J.ov.isConnected) return;
+    if (!seguranca && diario) seguranca = diario.replace(/[\\/][^\\/]+$/, "");
+    const nomeIt = (id) => { const it = porId.get(id); return it ? `${it.socio || ""}${it.arquivo ? " / " + it.arquivo : ""}` : id; };
+    J.q("#arCorpo").innerHTML = `<div class="arr-fim">
+      <h3>✓ ${fmtNum(feitos.length)} mudança(s) feita(s)${pulados.length ? ` · ${fmtNum(pulados.length)} não deu` : ""}</h3>
+      ${seguranca ? `<p class="sub">O que saiu da pasta está em <b>${esc(seguranca)}</b>.</p>` : ""}
+      <div class="arr-botoes">${seguranca ? `<button class="btn-sec" id="arVerSeg2">📂 Abrir a pasta de segurança</button>` : ""}
+        ${diario ? `<button class="btn-sec" id="arDesfazer2">↩ Desfazer esta arrumação</button>` : ""}
+        <button class="btn-sec" id="arDeNovo">🔍 Analisar de novo</button></div>
+      ${pulados.length ? `<h4>Não deu:</h4><ul class="arr-pul">${pulados.map((p) => `<li>${esc(nomeIt(p.id))} — ${esc(p.txt)}</li>`).join("")}</ul>` : ""}
+      <details><summary>Ver o que foi feito</summary><ul class="arr-pul">${feitos.map((f) => `<li>${esc(nomeIt(f.id))} — ${esc(f.txt)}</li>`).join("")}</ul></details></div>`;
+    plano = null; contar();
+    const v2 = J.q("#arVerSeg2"); if (v2) v2.onclick = () => window.api.arrumarAbrir(seguranca, raiz);
+    const d2 = J.q("#arDesfazer2"); if (d2) d2.onclick = () => desfazer(diario);
+    J.q("#arDeNovo").onclick = analisar;
+    if (window.Painel) window.Painel.atualizarContador();
+    if (typeof onAssociadoMudou === "function") onAssociadoMudou();
+  }
+
+  async function desfazer(arq) {
+    if (!confirm("Desfazer a arrumação? Tudo volta pro lugar e com o nome de antes.")) return;
+    const r = await window.api.arrumarDesfazer(arq);
+    if (!r || !r.ok) { toast(`Não consegui desfazer: ${esc((r && r.msg) || "erro")}`, "erro", 8000); return; }
+    toast(`↩ Arrumação desfeita: ${fmtNum(r.voltou)} coisa(s) voltaram pro lugar${r.falhas.length ? ` · ${r.falhas.length} não deu (${esc(r.falhas.slice(0, 3).join("; "))})` : ""}.`, r.falhas.length ? "aviso" : "ok", 10000);
+    if (J && J.ov.isConnected) {
+      const u = J.q(".arr-ultima"); if (u) u.remove();
+      J.q("#arCorpo").innerHTML = telaInicial(); J.q("#arAnalisar").onclick = analisar; plano = null; contar();
+    }
+    if (window.Painel) window.Painel.atualizarContador();
+  }
+
+  return { abrir };
 })();

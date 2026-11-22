@@ -122,8 +122,9 @@ const PADRAO = {
   siglaDossie: "DOSSIE COMPLETO", // nome do arquivo no modo dossie completo
   espacoNoNomeArquivo: true,      // "TERMO DE COMPROMISSO.pdf" (false = "TERMO_DE_COMPROMISSO.pdf")
 
-  _versao: 3,
+  _versao: 4,
 };
+const VERSAO_CFG = 4;
 
 function TIPOS_PADRAO() {
   return [
@@ -134,13 +135,11 @@ function TIPOS_PADRAO() {
     { nome: "Proposta", sigla: "PROPOSTA", tecla: "5", colorido: false },
     { nome: "Certidão de nascimento", sigla: "NASC", tecla: "6", colorido: false },
     { nome: "Certidão de casamento", sigla: "CASAMENTO", tecla: "7", colorido: false },
-    { nome: "Negativa", sigla: "NEG", tecla: "8", colorido: false },
-    { nome: "Termo de compromisso", sigla: "TERMO DE COMPROMISSO", tecla: "9", colorido: false },
+    { nome: "Certidão negativa", sigla: "NEG", tecla: "8", colorido: false },
+    { nome: "Termo de compromisso (TCO)", sigla: "TERMO DE COMPROMISSO", tecla: "9", colorido: false },
     { nome: "Ficha de sócio", sigla: "FICHA", tecla: "0", colorido: false },
-    { nome: "Auto conta", sigla: "AUTO CONTA", tecla: "", colorido: false },
-    { nome: "Auto cartão", sigla: "AUTO CARTAO", tecla: "", colorido: false },
-    { nome: "Conta", sigla: "CONTA", tecla: "", colorido: false },
-    { nome: "TCO", sigla: "TCO", tecla: "", colorido: false },
+    { nome: "Autorização de débito em conta", sigla: "AUTO CONTA", tecla: "", colorido: false },
+    { nome: "Autorização no cartão (crédito)", sigla: "AUTO CARTAO", tecla: "", colorido: false },
     { nome: "CAP", sigla: "CAP", tecla: "", colorido: false },
     { nome: "Carta de apresentação", sigla: "CARTA APRESENTACAO", tecla: "", colorido: false },
     { nome: "Inadimplência", sigla: "INADIMPLENCIA", tecla: "", colorido: false },
@@ -152,22 +151,31 @@ function TIPOS_PADRAO() {
 // a lista de tipos que vinha de fabrica ate a versao 0.6 (quem nunca mexeu ganha a lista nova)
 const SIGLAS_FABRICA_ANTIGA = ["RG", "CPF", "COMP_RES", "CERT_NASC", "CERT_CAS", "FICHA", "FOTO", "DOC"];
 const TROCA_ANTIGA = { COMP_RES: "ENDERECO", CERT_NASC: "NASC", CERT_CAS: "CASAMENTO" };
+// o que mudou da lista de fabrica da 0.7.0 pra 0.8.0 (a equipe explicou: TCO = termo de compromisso,
+// CONTA = autorizacao de debito em conta, NEG = certidao negativa, AUTO CARTAO = credito)
+const NOMES_070 = { NEG: ["Negativa", "Certidão negativa"], "AUTO CONTA": ["Auto conta", "Autorização de débito em conta"],
+  "AUTO CARTAO": ["Auto cartão", "Autorização no cartão (crédito)"], "TERMO DE COMPROMISSO": ["Termo de compromisso", "Termo de compromisso (TCO)"] };
 function migrar(c) {
-  if ((c._versao || 0) >= 3) return c;
-  const tipos = Array.isArray(c.tipos) ? c.tipos : [];
-  const siglas = tipos.map((t) => String(t.sigla || "").toUpperCase());
-  if (siglas.length === SIGLAS_FABRICA_ANTIGA.length && siglas.every((s, i) => s === SIGLAS_FABRICA_ANTIGA[i])) {
-    // os nomes que a equipe usa; mantem o que a pessoa marcou (obrigatorio, cor) nos que continuam
-    const novos = TIPOS_PADRAO();
-    for (const antigo of tipos) {
-      const sigla = TROCA_ANTIGA[String(antigo.sigla).toUpperCase()] || String(antigo.sigla).toUpperCase();
-      const n = novos.find((t) => t.sigla === sigla);
-      if (n) { if (antigo.obrig) n.obrig = true; if (sigla !== "FOTO") n.colorido = !!antigo.colorido; }
+  if ((c._versao || 0) < 3) {
+    const tipos = Array.isArray(c.tipos) ? c.tipos : [];
+    const siglas = tipos.map((t) => String(t.sigla || "").toUpperCase());
+    if (siglas.length === SIGLAS_FABRICA_ANTIGA.length && siglas.every((s, i) => s === SIGLAS_FABRICA_ANTIGA[i])) {
+      // os nomes que a equipe usa; mantem o que a pessoa marcou (obrigatorio, cor) nos que continuam
+      const novos = TIPOS_PADRAO();
+      for (const antigo of tipos) {
+        const sigla = TROCA_ANTIGA[String(antigo.sigla).toUpperCase()] || String(antigo.sigla).toUpperCase();
+        const n = novos.find((t) => t.sigla === sigla);
+        if (n) { if (antigo.obrigatorio) n.obrigatorio = true; if (sigla !== "FOTO") n.colorido = !!antigo.colorido; }
+      }
+      c.tipos = novos;
     }
-    c.tipos = novos;
+    if (!c.siglaDossie || String(c.siglaDossie).toUpperCase() === "DOSSIE") c.siglaDossie = "DOSSIE COMPLETO";
+  } else if (c._versao < 4 && Array.isArray(c.tipos)) {
+    // lista de fabrica da 0.7.0: tira TCO e CONTA (viraram o mesmo documento que outros) e acerta os nomes
+    c.tipos = c.tipos.filter((t) => !((t.sigla === "TCO" && t.nome === "TCO") || (t.sigla === "CONTA" && t.nome === "Conta")));
+    for (const t of c.tipos) { const n = NOMES_070[t.sigla]; if (n && t.nome === n[0]) t.nome = n[1]; }
   }
-  if (!c.siglaDossie || String(c.siglaDossie).toUpperCase() === "DOSSIE") c.siglaDossie = "DOSSIE COMPLETO";
-  c._versao = 3;
+  c._versao = VERSAO_CFG;
   return c;
 }
 
@@ -231,8 +239,8 @@ function carregar() {
       }
     } catch { salvo = null; }
   }
-  // config antiga (sem _versao 3): troca a lista de tipos de fabrica pela dos nomes da equipe
-  if (salvo && !((salvo._versao || 0) >= 3)) { salvo._versao = salvo._versao || 2; migrar(salvo); }
+  // config de versao antiga: troca a lista de tipos de fabrica pela dos nomes da equipe
+  if (salvo && !((salvo._versao || 0) >= VERSAO_CFG)) { salvo._versao = salvo._versao || 2; migrar(salvo); }
   return resolver(mesclar(PADRAO, salvo || {}));
 }
 

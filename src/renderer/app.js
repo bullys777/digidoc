@@ -135,7 +135,7 @@ async function desfazer() {
 function fotoDaTela(comTipos = true) {
   return {
     ordem: paginas.map((p) => p.id),
-    tipos: comTipos ? new Map(paginas.map((p) => [p.id, { tipo: p.tipo, auto: !!p.tipoAuto }])) : null,
+    tipos: comTipos ? new Map(paginas.map((p) => [p.id, { tipo: p.tipo, auto: !!p.tipoAuto, dono: p.dono || "", conferido: !!p.donoConferido }])) : null,
   };
 }
 function voltarFoto(f) {
@@ -144,7 +144,7 @@ function voltarFoto(f) {
   // paginas que entraram depois (nao estavam na foto) vao pro fim, na ordem que estavam
   for (const p of paginas) if (!f.ordem.includes(p.id)) reordenadas.push(p);
   paginas = reordenadas;
-  if (f.tipos) for (const p of paginas) if (f.tipos.has(p.id)) { const t = f.tipos.get(p.id); p.tipo = t.tipo; p.tipoAuto = t.auto; }
+  if (f.tipos) for (const p of paginas) if (f.tipos.has(p.id)) { const t = f.tipos.get(p.id); p.tipo = t.tipo; p.tipoAuto = t.auto; p.dono = t.dono; p.donoConferido = t.conferido; }
 }
 
 const CORES_TIPO = ["#2f6feb", "#1f9d57", "#b7791f", "#8b5cf6", "#e05a8a", "#0ea5a3", "#d1352c", "#5a6572"];
@@ -327,7 +327,9 @@ async function onAssociadoMudou() {
 const siglaArquivo = (s) => window.NomesDoc.chave(s);
 const siglaDoNomeArquivo = (f) => window.NomesDoc.chaveArquivo(f);
 function tipoJaSalvo(sigla) {
-  return docsAssoc.some((f) => window.NomesDoc.arquivoEhDoTipo(f, sigla));
+  // so conta o documento do titular ("RG JOAO.pdf" e o RG de um dependente, nao o dele)
+  const titular = $("#inpAssociado").value.trim();
+  return docsAssoc.some((f) => window.NomesDoc.arquivoEhDoTipo(f, sigla, titular));
 }
 
 function primeiraLetra(nome) {
@@ -358,6 +360,7 @@ function renderTipos() {
   add.innerHTML = `<span style="font-size:17px;color:var(--acento)">＋</span><span>Novo tipo</span>`;
   add.onclick = novoTipoRapido;
   cont.appendChild(add);
+  renderBarraDono();
 }
 function corDoTipo(sigla) {
   const i = cfg.tipos.findIndex((t) => t.sigla === sigla);
@@ -367,6 +370,109 @@ function nomeDoTipo(sigla) {
   if (sigla === "@IND") return "documento avulso";
   const t = cfg.tipos.find((t) => t.sigla === sigla);
   return t ? t.nome : sigla;
+}
+
+// ---------------- de quem e o documento: titular ou dependente ----------------
+// p.dono = "" (do associado) ou o nome curto do dependente ("JOAO"). Vai no nome do arquivo:
+// "NASC JOAO.pdf". Paginas do mesmo tipo e do mesmo dono viram um PDF so.
+// Pra nao errar: o nome lido no documento (reconhecimento) e comparado com o do associado, e antes
+// de salvar o DigiDoc pede pra conferir as paginas em que o nome nao bate.
+const DOC_COM_DONO = ["RG", "CNH", "CPF", "NASC", "NEG"]; // documentos com o nome do dono escrito
+function donoLimpo(s) {
+  return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase()
+    .replace(/[^A-Z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 24).trim();
+}
+let depsExtras = []; // dependentes criados agora (ainda sem pagina marcada)
+function dependentesDaTela() {
+  if (!paginas.length) depsExtras = [];
+  const out = [];
+  for (const d of [...paginas.map((p) => p.dono || ""), ...depsExtras]) if (d && !out.includes(d)) out.push(d);
+  return out;
+}
+const tipoTemDono = (sigla) => DOC_COM_DONO.some((k) => window.NomesDoc.nomesDoTipo(k).includes(window.NomesDoc.chave(sigla)));
+// o nome lido no documento nao bate com o que esta marcado? -> { sugestao, motivo } (sugestao "" = titular)
+function conflitoDono(p) {
+  const titular = $("#inpAssociado").value.trim();
+  if (!p.nomeLido || !titular || !p.tipo || p.tipo === "@IND" || p.donoConferido || !tipoTemDono(p.tipo)) return null;
+  const nd = window.NomesDoc, lido = nd.primeiroNome(p.nomeLido);
+  const deOutro = nd.outraPessoa(p.nomeLido, titular);
+  if (!p.dono && deOutro) return { sugestao: lido, motivo: `está como do titular, mas o nome no documento é ${p.nomeLido}` };
+  if (p.dono && !deOutro) return { sugestao: "", motivo: `está como de ${p.dono}, mas o nome no documento parece o do titular (${p.nomeLido})` };
+  if (p.dono && lido && !nd.parecido(lido, nd.primeiroNome(p.dono))) return { sugestao: lido, motivo: `está como de ${p.dono}, mas o nome no documento é ${p.nomeLido}` };
+  return null;
+}
+async function aplicarDono(ids, dono) {
+  if (modo !== "documentos") return;
+  const alvo = paginas.filter((p) => ids.includes(p.id));
+  if (!alvo.length) { setStatus("Marque as páginas do documento antes de dizer de quem é.", "aviso"); return; }
+  const foto = fotoDaTela();
+  for (const p of alvo) { p.dono = dono || ""; p.donoConferido = true; }
+  registrarDesfazer(dono ? `marcar como de ${dono}` : "marcar como do titular", async () => voltarFoto(foto));
+  renderGrade(); renderTipos();
+  setStatus(dono ? `${alvo.length} página(s) de ${dono} (dependente): o arquivo sai com o nome dele (ex.: NASC ${dono}.pdf).` : `${alvo.length} página(s) do titular.`, "ok");
+}
+async function novoDependente(ids) {
+  const alvo = paginas.filter((p) => ids.includes(p.id));
+  if (!alvo.length) { setStatus("Marque as páginas do documento do dependente primeiro.", "aviso"); return; }
+  const titular = $("#inpAssociado").value.trim();
+  const lido = alvo.map((p) => p.nomeLido).find((n) => n && (!titular || window.NomesDoc.outraPessoa(n, titular)));
+  const dono = donoLimpo(await pedirTexto("Primeiro nome do dependente (vai no nome do arquivo, ex.: NASC JOAO)", lido ? window.NomesDoc.primeiroNome(lido) : ""));
+  if (!dono) return;
+  if (titular && !window.NomesDoc.outraPessoa(dono, titular) && !confirm(`"${dono}" parece o nome do titular (${titular}). É mesmo de um dependente?`)) return;
+  if (!depsExtras.includes(dono)) depsExtras.push(dono);
+  await aplicarDono(ids, dono);
+}
+function renderBarraDono() {
+  const b = $("#barraDono");
+  if (!b) return;
+  if (modo !== "documentos") { b.innerHTML = ""; return; }
+  const marcadas = paginas.filter((p) => sel.has(p.id));
+  const ativo = (d) => marcadas.length > 0 && marcadas.every((p) => (p.dono || "") === d);
+  b.innerHTML = `<span class="dono-tit" title="Documento de dependente sai com o nome dele: NASC JOAO.pdf">De quem é:</span>` +
+    `<button class="dono-chip${ativo("") ? " ativo" : ""}" data-d="" title="Documento do próprio associado">👤 Titular</button>` +
+    dependentesDaTela().map((d) => `<button class="dono-chip dep${ativo(d) ? " ativo" : ""}" data-d="${esc(d)}" title="Marcar as páginas como de ${esc(d)}">${esc(d)}</button>`).join("") +
+    `<button class="dono-chip novo" data-novo="1" title="Documento de filho, cônjuge...: o arquivo sai como NASC JOAO.pdf">＋ Dependente</button>`;
+  b.querySelectorAll(".dono-chip").forEach((x) => {
+    x.onclick = () => { const ids = [...sel]; if (x.dataset.novo) novoDependente(ids); else aplicarDono(ids, x.dataset.d); };
+  });
+}
+// antes de salvar: as paginas em que o nome lido nao bate com o marcado. Devolve false = voltar
+function conferirDonos(lista) {
+  return new Promise((resolve) => {
+    const titular = $("#inpAssociado").value.trim();
+    const ov = document.createElement("div");
+    ov.className = "modal";
+    ov.innerHTML = `<div class="modal-cx" style="width:640px"><div class="modal-cab"><h2>👤 Confira de quem é cada documento</h2></div>
+      <div class="modal-corpo"><p class="sub" style="margin:0 0 10px">O nome escrito nestes documentos não bate com o que está marcado. Associado (titular): <b>${esc(titular)}</b></p>
+      ${lista.map((p) => {
+        const c = conflitoDono(p);
+        return `<div class="cd-item" data-id="${esc(p.id)}"><img src="${p.thumb || ""}" alt="">
+          <div class="cd-info"><b>Página ${paginas.indexOf(p) + 1} — ${esc(nomeDoTipo(p.tipo))}</b><small>${esc(c.motivo)}</small>
+            <label><input type="radio" name="cd-${esc(p.id)}" value="" ${c.sugestao ? "" : "checked"}> do titular</label>
+            <label><input type="radio" name="cd-${esc(p.id)}" value="dep" ${c.sugestao ? "checked" : ""}> de um dependente: <input type="text" class="cd-nome" maxlength="24" value="${esc(c.sugestao || p.dono || "")}"></label>
+          </div></div>`;
+      }).join("")}</div>
+      <div class="modal-rod"><button class="btn-sec" id="cdVoltar">Voltar e conferir</button><span class="flex1"></span><button class="btn-salvar" id="cdOk">Salvar assim</button></div></div>`;
+    document.body.appendChild(ov);
+    const fim = (v) => { ov.remove(); resolve(v); };
+    ov.querySelectorAll(".cd-nome").forEach((i) => {
+      i.addEventListener("focus", () => { i.closest("label").querySelector("input[type=radio]").checked = true; });
+      i.addEventListener("keydown", (e) => e.stopPropagation());
+    });
+    ov.querySelector("#cdVoltar").onclick = () => fim(false);
+    ov.querySelector("#cdOk").onclick = () => {
+      const escolhas = [];
+      for (const el of ov.querySelectorAll(".cd-item")) {
+        const dep = el.querySelector("input[type=radio][value=dep]").checked;
+        const nome = donoLimpo(el.querySelector(".cd-nome").value);
+        if (dep && !nome) { el.querySelector(".cd-nome").focus(); return; }
+        escolhas.push([el.dataset.id, dep ? nome : ""]);
+      }
+      for (const [id, dono] of escolhas) { const p = paginas.find((x) => x.id === id); if (p) { p.dono = dono; p.donoConferido = true; } }
+      renderGrade(); renderTipos();
+      fim(true);
+    };
+  });
 }
 
 // ---------------- grade de paginas ----------------
@@ -384,12 +490,14 @@ function renderGrade() {
     if (modo === "documentos" && p.lendo) {
       tipoTag = `<div class="pag-tipo lendo">🔎 lendo…</div>`;
     } else if (modo === "documentos" && p.tipo) {
-      tipoTag = `<div class="pag-tipo clicavel" style="background:${corDoTipo(p.tipo)}" title="${p.tipoAuto ? "Reconhecido sozinho" + (p.motivoAuto ? " (" + esc(p.motivoAuto) + ")" : "") + " — clique pra trocar" : "Clique pra trocar o tipo"}">${p.tipoAuto ? "✨ " : ""}${esc(nomeDoTipo(p.tipo))} ▾</div>`;
+      tipoTag = `<div class="pag-tipo clicavel" style="background:${corDoTipo(p.tipo)}" title="${p.tipoAuto ? "Reconhecido sozinho" + (p.motivoAuto ? " (" + esc(p.motivoAuto) + ")" : "") + " — clique pra trocar" : "Clique pra trocar o tipo"}${p.dono ? " · documento de " + esc(p.dono) + " (dependente)" : ""}">${p.tipoAuto ? "✨ " : ""}${esc(nomeDoTipo(p.tipo))}${p.dono ? ` · <b>${esc(p.dono)}</b>` : ""} ▾</div>`;
     } else if (modo === "documentos") {
       tipoTag = `<div class="pag-tipo clicavel sem-tipo" title="Clique pra escolher o tipo">＋ tipo ▾</div>`;
     }
     const igual = p.repetidaDe ? paginas.findIndex((x) => x.id === p.repetidaDe) + 1 : 0; // numero atual da pagina igual
-    const marcas = (p.incerto ? `<span class="m-alerta" title="Não tive certeza do lado desta página — confira (R gira)">↻?</span>` : "") +
+    const conflito = modo === "documentos" ? conflitoDono(p) : null;
+    const marcas = (conflito ? `<span class="m-alerta" title="De quem é? ${esc(conflito.motivo)}. Clique na etiqueta pra marcar.">👤?</span>` : "") +
+      (p.incerto ? `<span class="m-alerta" title="Não tive certeza do lado desta página — confira (R gira)">↻?</span>` : "") +
       (igual ? `<span class="m-alerta" title="Parece igual à página ${igual} — confira se não escaneou duas vezes">≈${igual}</span>` : "") +
       (p.colorido ? `<span title="colorida">🎨</span>` : "") + (p.recortada ? `<span title="recortada">✂</span>` : "");
     d.innerHTML = `<img src="${p.thumb || ""}" alt="pág ${idx + 1}" draggable="false" />
@@ -409,6 +517,7 @@ function renderGrade() {
     d.addEventListener("drop", (e) => { e.preventDefault(); soltarEm(p.id); });
     g.appendChild(d);
   });
+  renderBarraDono();
   $("#contadorPags").textContent = `${paginas.length} página${paginas.length === 1 ? "" : "s"}` +
     (sel.size ? ` · ${sel.size} marcada${sel.size === 1 ? "" : "s"}` : "");
   renderResumoDocs();
@@ -861,7 +970,7 @@ function limparTipos() {
 // documentos obrigatorios que este associado ainda nao tem (nem salvos, nem marcados agora)
 function obrigatoriosFaltando() {
   const obrig = (cfg.tipos || []).filter((t) => t.obrigatorio);
-  return { configurado: obrig.length > 0, falta: obrig.filter((t) => !tipoJaSalvo(t.sigla) && !paginas.some((p) => p.tipo === t.sigla)) };
+  return { configurado: obrig.length > 0, falta: obrig.filter((t) => !tipoJaSalvo(t.sigla) && !paginas.some((p) => p.tipo === t.sigla && !p.dono)) };
 }
 
 function renderResumoDocs() {
@@ -897,12 +1006,14 @@ function montarGrupos() {
       indN++;
       grupos.push({ tipoSigla: cfg.siglaDossie === "DOSSIE" ? "DOC" : "DOC", ids: [p.id], _ind: indN, colorido: false });
     } else {
-      if (!porTipo.has(p.tipo)) { const o = { tipoSigla: p.tipo, ids: [], colorido: !!(cfg.tipos.find((t) => t.sigla === p.tipo) || {}).colorido }; porTipo.set(p.tipo, o); grupos.push(o); }
-      porTipo.get(p.tipo).ids.push(p.id);
+      // mesmo tipo e mesmo dono = um PDF so (o RG do titular e o RG do dependente sao arquivos diferentes)
+      const k = p.tipo + "\u0000" + (p.dono || "");
+      if (!porTipo.has(k)) { const o = { tipoSigla: p.tipo, dono: p.dono || "", ids: [], colorido: !!(cfg.tipos.find((t) => t.sigla === p.tipo) || {}).colorido }; porTipo.set(k, o); grupos.push(o); }
+      porTipo.get(k).ids.push(p.id);
     }
   }
   // nomes de arquivo (previa; o nome final sai no main)
-  return grupos.map((g) => ({ ...g, nomeArquivo: (g.tipoSigla + (g._ind ? "_" + g._ind : "")) + ".pdf" }));
+  return grupos.map((g) => ({ ...g, nomeArquivo: (g.tipoSigla + (g.dono ? " " + g.dono : "") + (g._ind ? "_" + g._ind : "")) + ".pdf" }));
 }
 
 // ---------------- salvar ----------------
@@ -918,6 +1029,11 @@ async function salvar() {
   const edicao = window.Assistente ? window.Assistente.edicao : null; // reabriu documentos salvos pra editar
   if (!nome) { setStatus("Digite o nome do associado.", "aviso"); $("#inpAssociado").focus(); return; }
   if (!paginas.length) { setStatus("Nenhuma página.", "aviso"); return; }
+  // de quem e cada documento: o nome escrito nele nao bate com o marcado? confere antes (nao salva errado)
+  if (modo === "documentos") {
+    const conflitos = paginas.filter((p) => conflitoDono(p));
+    if (conflitos.length && !(await conferirDonos(conflitos))) { setStatus("Confira de quem é cada documento e salve de novo.", "aviso"); return; }
+  }
   const nivel = $("#selNivel").value;
   ocupado = true; atualizarBotoesFonte();
   mostrarOverlay("Gerando PDF…");
@@ -926,7 +1042,7 @@ async function salvar() {
     if (modo === "dossie") {
       r = await window.api.salvarDossie({ nomeAssociado: nome, ids: paginas.map((p) => p.id), nivel, substituir: !!edicao, nomeArquivo: edicao ? window.Assistente.arquivoDaEdicao(cfg.siglaDossie) : null });
     } else {
-      const grupos = montarGrupos().map((g) => ({ tipoSigla: g.tipoSigla, ids: g.ids, colorido: g.colorido, nomeArquivo: edicao ? window.Assistente.arquivoDaEdicao(g.tipoSigla) : null }));
+      const grupos = montarGrupos().map((g) => ({ tipoSigla: g.tipoSigla, complemento: g.dono || "", ids: g.ids, colorido: g.colorido, nomeArquivo: edicao ? window.Assistente.arquivoDaEdicao(g.tipoSigla, g.dono || "") : null }));
       if (!grupos.length) { setStatus("Nenhuma página tem tipo. Marque as páginas primeiro.", "aviso"); return; }
       r = await window.api.salvarDocumentos({ nomeAssociado: nome, grupos, nivel, substituir: !!edicao });
     }
@@ -1386,6 +1502,8 @@ function montarFormConfig(c) {
       ${linhaSw("cfgRemAcentoPasta", "Tirar acentos da pasta", "", c.removerAcentosPasta)}
       <div class="cfg-linha"><label class="rot">Nome do dossiê completo<span class="sub">nome do arquivo no modo dossiê (ex.: DOSSIE COMPLETO.pdf)</span></label><input type="text" id="cfgSiglaDossie" value="${esc(c.siglaDossie)}"></div>
       ${linhaSw("cfgEspacoNome", "Espaço entre as palavras do nome do arquivo", "TERMO DE COMPROMISSO.pdf (desligado: TERMO_DE_COMPROMISSO.pdf)", c.espacoNoNomeArquivo !== false)}
+      <div class="cfg-linha"><label class="rot">Arrumar pastas antigas<span class="sub">cópias duplicadas, nomes fora do padrão, arquivos do scanner sem nome… Só analisa e mostra; você escolhe o que fazer. Nada é apagado e dá pra desfazer.</span></label>
+        <button class="btn-sec" id="btnArrumar">🧹 Arrumar…</button></div>
       <div class="cfg-linha"><label class="rot">Compressão no documento por documento</label>
         <select id="cfgCompDoc">${nivelOpts(c.compressaoPadraoDocumento)}</select></div>
     </div>
@@ -1550,6 +1668,8 @@ function bindConfigDinamico() {
 
   const bd = $("#btnDesinstalar");
   if (bd) bd.onclick = desinstalarDoPC;
+  const bar = $("#btnArrumar");
+  if (bar) bar.onclick = () => { if (window.Arrumar) window.Arrumar.abrir(); };
   const bdg = $("#btnDiagDev");
   if (bdg) bdg.onclick = async () => {
     const senha = await pedirTexto("Senha de desenvolvedor", "", false, true);

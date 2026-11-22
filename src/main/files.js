@@ -201,5 +201,5 @@ function docsDoAssociado(cfg, nome) {
 
 module.exports = {
   tiraAcentos, formataNomeAssociado, primeiraLetra, pastaAssociado,
-  montaNomeArquivo, resolveDestino, listaAssociados, docsDoAssociado, sanitizaBase,
+  montaNomeArquivo, resolveDestino, listaAssociados, docsDoAssociado, sanitizaBase, nomePastaLetra,
 };

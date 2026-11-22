@@ -41,6 +41,22 @@ const REGRAS = {
   titulo: [["TITULO ELEITORAL", 8], ["TITULO DE ELEITOR", 8], ["JUSTICA ELEITORAL", 6], ["TRIBUNAL SUPERIOR ELEITORAL", 5],
     ["ELEITOR", 3], ["ZONA", 2], ["SECAO", 2]],
   ctps: [["CARTEIRA DE TRABALHO", 8], ["CTPS", 6], ["PREVIDENCIA SOCIAL", 3], ["CONTRATO DE TRABALHO", 3]],
+  // os da associacao (a equipe explicou: NEG = certidao negativa, TCO = termo de compromisso,
+  // AUTO CONTA / AUTO CARTAO = autorizacao de debito em conta / no cartao de credito)
+  negativa: [["CERTIDAO NEGATIVA", 8], ["NADA CONSTA", 6], ["NAO CONSTA", 4], ["NAO CONSTAM", 4], ["ANTECEDENTES CRIMINAIS", 6],
+    ["CERTIDAO DE ANTECEDENTES", 6], ["NEGATIVA DE DEBITOS", 6], ["NEGATIVA", 3], ["CRIMINAL", 2], ["CERTIFICA", 2],
+    ["TRIBUNAL DE JUSTICA", 2], ["POLICIA CIVIL", 2], ["CODIGO DE VALIDACAO", 1], ["AUTENTICIDADE", 1]],
+  compromisso: [["TERMO DE COMPROMISSO", 9], ["ME COMPROMETO", 5], ["COMPROMETO ME", 5], ["COMPROMETE SE", 4], ["COMPROMETO", 3],
+    ["COMPROMISSO", 3], ["COMPROMETENDO", 2]],
+  autoconta: [["DEBITO EM CONTA", 7], ["AUTORIZACAO DE DEBITO", 5], ["AUTORIZACAO PARA DEBITO", 5], ["DEBITO AUTOMATICO", 5],
+    ["CONTA CORRENTE", 4], ["CONTA POUPANCA", 3], ["AGENCIA", 2], ["DEBITAR", 3], ["AUTORIZO", 2], ["BANCO", 1]],
+  autocartao: [["CARTAO DE CREDITO", 7], ["DEBITO NO CARTAO", 7], ["DEBITO EM CARTAO", 7], ["NUMERO DO CARTAO", 5],
+    ["TITULAR DO CARTAO", 5], ["CODIGO DE SEGURANCA", 4], ["AUTORIZACAO DE DEBITO", 2], ["MASTERCARD", 3], ["BANDEIRA DO CARTAO", 4],
+    ["CREDITO", 2], ["VALIDADE DO CARTAO", 4], ["AUTORIZO", 1]],
+  apresentacao: [["CARTA DE APRESENTACAO", 9], ["APRESENTACAO", 3], ["APRESENTAMOS", 3], ["APRESENTO", 3], ["VIMOS POR MEIO DESTA", 2]],
+  uniao: [["UNIAO ESTAVEL", 8], ["DECLARACAO DE UNIAO", 4], ["CONVIVENTES", 4], ["CONVIVENCIA", 3], ["CONVIVEM", 3],
+    ["COMPANHEIRO", 2], ["COMPANHEIRA", 2], ["VIDA EM COMUM", 3]],
+  inadimplencia: [["DECLARACAO DE INADIMPLENCIA", 9], ["INADIMPLENCIA", 4], ["INADIMPLENTE", 4], ["DEBITOS EM ATRASO", 3], ["PARCELAS EM ATRASO", 3]],
 };
 // documentos que o DigiDoc sabe reconhecer. "padrao" = nome do arquivo sugerido quando a pessoa
 // liga o reconhecimento dele e nao escreve outro (Configuracoes > Reconhecimento > Salvar como)
@@ -56,6 +72,13 @@ const FAMILIAS = [
   { id: "renda", nome: "Comprovante de renda (holerite, contracheque)", padrao: "RENDA" },
   { id: "titulo", nome: "Título de eleitor", padrao: "TITULO" },
   { id: "ctps", nome: "Carteira de trabalho", padrao: "CTPS" },
+  { id: "negativa", nome: "Certidão negativa", padrao: "NEG" },
+  { id: "compromisso", nome: "Termo de compromisso (TCO)", padrao: "TERMO DE COMPROMISSO" },
+  { id: "autoconta", nome: "Autorização de débito em conta", padrao: "AUTO CONTA" },
+  { id: "autocartao", nome: "Autorização de débito no cartão (crédito)", padrao: "AUTO CARTAO" },
+  { id: "apresentacao", nome: "Carta de apresentação", padrao: "CARTA APRESENTACAO" },
+  { id: "uniao", nome: "Declaração de união estável", padrao: "DEC UNIAO ESTAVEL" },
+  { id: "inadimplencia", nome: "Inadimplência", padrao: "INADIMPLENCIA" },
   { id: "foto", nome: "Foto 3x4 (imagem sem texto)", padrao: "FOTO" },
 ];
 // qual tipo da config corresponde a cada familia (pela sigla ou por palavras do nome)
@@ -64,6 +87,9 @@ const ACHAR_TIPO = {
   residencia: [/^COMP_?RES|^ENDERECO/, /RESIDENCIA|ENDERECO/], nascimento: [/NASC/, /NASCIMENTO/], casamento: [/CAS/, /CASAMENTO/],
   ficha: [/^FICHA/, /FICHA|INSCRICAO/], foto: [/^FOTO/, /FOTO|3X4/], proposta: [/^PROPOSTA/, /PROPOSTA/],
   renda: [/^RENDA|HOLERITE/, /RENDA|HOLERITE|CONTRACHEQUE/], titulo: [/^TITULO/, /TITULO|ELEITOR/], ctps: [/^CTPS/, /CARTEIRA DE TRABALHO|CTPS/],
+  negativa: [/^NEG/, /NEGATIVA/], compromisso: [/^TCO$|^TERMO.*COMPROMISSO|^COMPROMISSO/, /COMPROMISSO/],
+  autoconta: [/^AUTO.?CONTA|^CONTA$|^DEB.*CONTA/, /DEBITO EM CONTA|AUTO CONTA/], autocartao: [/^AUTO.?CART|^CREDITO|^CARTAO$/, /CARTAO|CREDITO/],
+  apresentacao: [/APRESENTA/, /APRESENTA/], uniao: [/UNIAO|ESTAVEL/, /UNIAO ESTAVEL/], inadimplencia: [/^INADIMPL/, /INADIMPL/],
 };
 
 const normaliza = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase()
@@ -101,8 +127,10 @@ function destinoDaFamilia(fid, tipos, rec) {
     // a pessoa escolheu o nome ("ENDERECO", "Proposta"...): usa o tipo com esse nome ou cria um
     const alvo = escrito || (tipoDaFamilia(fid, tipos) || {}).sigla || fam.padrao;
     const s = siglaDe(alvo);
-    const t = tipos.find((x) => normaliza(x.sigla).trim().replace(/ /g, "_") === s || normaliza(x.nome).trim() === normaliza(alvo).trim());
-    return t ? { t } : { criar: { nome: bonito(alvo.replace(/_/g, " ")), sigla: s } };
+    const k = (v) => normaliza(v).replace(/[^A-Z0-9 ]/g, " ").trim().replace(/[\s_]+/g, "_");
+    const t = tipos.find((x) => k(x.sigla) === k(alvo) || k(x.sigla) === s || k(x.nome) === k(alvo));
+    const siglaNova = normaliza(alvo).replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim().slice(0, 30) || s;
+    return t ? { t } : { criar: { nome: bonito(alvo.replace(/_/g, " ")), sigla: siglaNova } };
   }
   // sem configuracao: so reconhece se ja existe um tipo que combina (como sempre foi)
   const t = tipoDaFamilia(fid, tipos);

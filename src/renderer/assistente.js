@@ -53,6 +53,7 @@ window.Assistente = (() => {
           const t = cfg.tipos.find((t) => t.sigla === r.sigla);
           if (t && !!t.colorido !== !!p.colorido) await definirCor([p.id], !!t.colorido); // ex.: Foto 3x4 colorida
         } else if (!p.tipo) { duvida++; p.motivoAuto = r.motivo; }
+        if (r.nome) p.nomeLido = r.nome; // nome escrito no documento: pra conferir de quem e (titular/dependente)
         if (r.nome && !nomeSugerido && !$("#inpAssociado").value.trim()) { nomeSugerido = true; sugerirNome(r.nome); }
         renderGrade();
       }
@@ -85,12 +86,20 @@ window.Assistente = (() => {
     m.innerHTML = `<div class="mt-tit">${alvo.length > 1 ? `Tipo das ${alvo.length} páginas marcadas` : `Tipo da página ${paginas.indexOf(p) + 1}`}${p.tipoAuto && p.motivoAuto ? `<small>reconhecido por: ${esc(p.motivoAuto)}</small>` : ""}</div>` +
       itens.map((t) => `<button class="menu-item" data-s="${esc(t.sigla)}"><span class="bolinha" style="background:${t.cor}"></span><b>${esc(t.nome)}</b>${t.tecla ? `<kbd>${esc(t.tecla)}</kbd>` : ""}${p.tipo === t.sigla ? " ✓" : ""}</button>`).join("") +
       `<button class="menu-item" data-s="@IND"><span class="bolinha" style="background:#5a6572"></span><b>Documento avulso</b></button>
-       <button class="menu-item" data-s=""><span class="bolinha" style="background:transparent;border:1px solid var(--borda)"></span><b>Sem tipo</b></button>`;
+       <button class="menu-item" data-s=""><span class="bolinha" style="background:transparent;border:1px solid var(--borda)"></span><b>Sem tipo</b></button>` +
+      // de quem e: titular ou dependente (vai no nome do arquivo: NASC JOAO.pdf)
+      `<div class="mt-dono"><span>De quem é${p.nomeLido ? ` <small>(no documento: ${esc(p.nomeLido)})</small>` : ""}:</span>
+        <button class="dono-chip${!alvo.some((x) => x.dono) ? " ativo" : ""}" data-d="">👤 Titular</button>` +
+      dependentesDaTela().map((d) => `<button class="dono-chip dep${alvo.every((x) => x.dono === d) ? " ativo" : ""}" data-d="${esc(d)}">${esc(d)}</button>`).join("") +
+      `<button class="dono-chip novo" data-novo="1">＋ Dependente</button></div>`;
     document.body.appendChild(m);
     const r = ancoraEl.getBoundingClientRect();
     m.style.left = Math.max(8, Math.min(innerWidth - m.offsetWidth - 8, r.left)) + "px";
     m.style.top = (r.bottom + m.offsetHeight + 8 > innerHeight ? Math.max(8, r.top - m.offsetHeight - 4) : r.bottom + 4) + "px";
     m.querySelectorAll(".menu-item").forEach((b) => { b.onclick = () => { m.remove(); trocarTipo(alvo, b.dataset.s || null); }; });
+    m.querySelectorAll(".mt-dono .dono-chip").forEach((b) => {
+      b.onclick = () => { m.remove(); const ids = alvo.map((x) => x.id); if (b.dataset.novo) novoDependente(ids); else aplicarDono(ids, b.dataset.d); };
+    });
     setTimeout(() => document.addEventListener("mousedown", fechaFora, true), 0);
     function fechaFora(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("mousedown", fechaFora, true); } }
   }
@@ -189,8 +198,15 @@ window.Assistente = (() => {
         }, { semAjustes: true });
         total += r.adicionadas;
         if (!ehDossie) {
-          const t = window.NomesDoc.tipoDoArquivo(a.nome, cfg.tipos); // "TERMO DE COMPROMISSO.pdf" -> o tipo
-          for (const id of r.ids || []) { const p = paginas.find((x) => x.id === id); if (p) p.tipo = t ? t.sigla : "@IND"; }
+          // "TERMO DE COMPROMISSO.pdf" -> o tipo; "NASC JOAO.pdf" -> NASC, do dependente JOAO
+          const an = window.NomesDoc.analisar(a.nome, cfg.tipos, e.associado);
+          for (const id of r.ids || []) {
+            const p = paginas.find((x) => x.id === id);
+            if (!p) continue;
+            p.tipo = an.tipo ? an.tipo.sigla : "@IND";
+            p.dono = an.tipo && !an.doTitular ? donoLimpo(an.complemento) : "";
+            p.donoConferido = true; // ja foi salvo assim
+          }
         }
       }
     } finally { pausado = false; ocupado = false; atualizarBotoesFonte(); esconderOverlay(); }
@@ -212,12 +228,17 @@ window.Assistente = (() => {
   // o nome no campo mudou pra outra pessoa: sai da edicao
   function nomeMudou(nome) { if (edicao && chave(nome) !== chave(edicao.nome)) { edicao = null; mostrarEdicao(); } }
   // nome exato do arquivo reaberto pra um grupo (ex.: RG_2.pdf), pra salvar por cima do mesmo
-  function arquivoDaEdicao(sigla) {
+  function arquivoDaEdicao(sigla, dono = "") {
     if (!edicao) return null;
     // reabriu como dossie mas vai salvar como documentos (ou o contrario): nao grava por cima de nada
     if (edicao.modo !== modo) return null;
     if (edicao.modo === "dossie") return edicao.arquivos[0] || null;
-    const doTipo = edicao.arquivos.filter((n) => { const t = window.NomesDoc.tipoDoArquivo(n, cfg.tipos); return t && siglaArquivo(t.sigla) === siglaArquivo(sigla); });
+    // o arquivo do mesmo tipo E do mesmo dono (o RG do titular nao grava por cima do RG do dependente)
+    const doTipo = edicao.arquivos.filter((n) => {
+      const an = window.NomesDoc.analisar(n, cfg.tipos, edicao.nome);
+      if (!an.tipo || siglaArquivo(an.tipo.sigla) !== siglaArquivo(sigla)) return false;
+      return dono ? !an.doTitular && donoLimpo(an.complemento) === donoLimpo(dono) : an.doTitular;
+    });
     return doTipo.length === 1 ? doTipo[0] : null;
   }
 

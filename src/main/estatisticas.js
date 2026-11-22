@@ -57,11 +57,14 @@ async function calcular(cfg) {
   // cada PDF conta pro tipo que ele e, mesmo escrito de outro jeito ("COMP. ENDEREÇO" = ENDERECO,
   // "RG MARIA" = RG, "DOSSIE" = DOSSIE COMPLETO)
   const tiposConhecidos = [...(cfg.tipos || []), { sigla: cfg.siglaDossie || "DOSSIE COMPLETO" }];
+  // d.tipo = o documento (pro grafico por tipo); d.sigla = o que conta pro associado — o documento de um
+  // dependente ("NASC JOAO") aparece com o nome dele e nao conta como o do titular
   for (const p of pessoas) for (const d of p.docs) {
-    const t = nomesDoc.tipoDoArquivo(d.nome, tiposConhecidos);
-    if (t) d.sigla = siglaArquivo(t.sigla);
+    const an = nomesDoc.analisar(d.nome, tiposConhecidos, p.nome);
+    if (an.tipo) { d.tipo = siglaArquivo(an.tipo.sigla); d.sigla = an.doTitular ? d.tipo : `${d.tipo}_${nomesDoc.chave(an.complemento)}`; }
     // "2026-11-05 (1).pdf": arquivo que saiu do scanner e ninguem renomeou
-    else if (/^\d{4}_\d{2}_\d{2}(_\d+)*$/.test(d.sigla)) d.sigla = "ARQUIVO_DO_SCANNER";
+    else if (/^\d{4}_\d{2}_\d{2}(_\d+)*$/.test(d.sigla)) d.tipo = d.sigla = "ARQUIVO_DO_SCANNER";
+    else d.tipo = d.sigla;
   }
   const hoje = diaLocal(Date.now());
   const ontem = diaLocal(Date.now() - 864e5);
@@ -75,7 +78,7 @@ async function calcular(cfg) {
     const diasDaPessoa = new Set();
     for (const d of p.docs) {
       totalPdfs++; totalBytes += d.bytes; L.pdfs++;
-      porTipo[d.sigla] = (porTipo[d.sigla] || 0) + 1;
+      porTipo[d.tipo || d.sigla] = (porTipo[d.tipo || d.sigla] || 0) + 1;
       const dia = diaLocal(d.ms);
       const D = porDia[dia] || (porDia[dia] = { pessoas: 0, pdfs: 0, bytes: 0 });
       D.pdfs++; D.bytes += d.bytes;
