@@ -3,6 +3,9 @@
 Cada versão nova começa com `## <versão>`. As linhas com `-` viram a lista de
 novidades que aparece no aviso de atualização dentro do app.
 
+## 0.6.2
+- Lista de conferência: ao abrir, já puxa sozinha todos os associados das pastas que existem na pasta principal (letra por letra), com o dia em que cada pasta foi criada
+
 ## 0.6.1
 - Lista de conferência: o nome do associado vai exatamente como está escrito (no campo ou na pasta), sem separar números
 

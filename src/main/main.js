@@ -822,7 +822,10 @@ ipcMain.handle("conferencia:abrir", (_e, pasta) => {
   try {
     const p = pasta || pastaConferencia();
     const txt = path.join(p, conferencia.NOME_TXT);
-    if (!fs.existsSync(txt)) conferencia.importar(p, []); // cria a lista (vazia) pra abrir
+    // antes de abrir, puxa sozinho os associados das pastas que ja existem na pasta principal
+    // (Pasta principal > Letra A, Letra B... > pasta de cada socio). Quem ja esta nao repete.
+    try { conferencia.importar(p, conferencia.escanear([cfgSaida().pastaSaida])); }
+    catch { if (!fs.existsSync(txt)) conferencia.importar(p, []); }
     shell.openPath(txt);
     return true;
   } catch (e) { return false; }
